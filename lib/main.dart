@@ -149,22 +149,25 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(20),
+                      padding: const EdgeInsets.all(8), // Reduced padding for a tighter circle
                       decoration: BoxDecoration(
                         color: Colors.white,
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.05),
+                            color: Colors.black.withOpacity(0.1),
                             blurRadius: 20,
-                            spreadRadius: 5,
+                            spreadRadius: 2,
                           ),
                         ],
                       ),
-                      child: Image.asset(
-                        'android/app/src/logo.png',
-                        width: 120,
-                        height: 120,
+                      child: ClipOval(
+                        child: Image.asset(
+                          'android/app/src/logo.png',
+                          width: 140, // Slightly larger
+                          height: 140,
+                          fit: BoxFit.cover,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 30),
@@ -247,6 +250,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
   bool _obscurePassword = true;
+  bool _isAdminMode = false;
 
   @override
   void initState() {
@@ -265,129 +269,156 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
     super.dispose();
   }
 
+  void _toggleMode(bool admin) {
+    setState(() {
+      _isAdminMode = admin;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Stack(
         children: [
+          // Background Gradient - Using the Admin dark theme for both
           Container(
             decoration: const BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [
-                  Color(0xFF3F51B5),
-                  Color(0xFF673AB7),
-                  Color(0xFF03A9F4),
-                ],
+                colors: [Color(0xFF212121), Color(0xFF3F51B5)],
               ),
             ),
-          ),
-          Positioned(
-            top: -100,
-            right: -100,
-            child: _buildBlob(300, const Color(0x3303A9F4)),
-          ),
-          Positioned(
-            bottom: -50,
-            left: -80,
-            child: _buildBlob(250, const Color(0x333F51B5)),
-          ),
-          Positioned(
-            top: 200,
-            left: -100,
-            child: _buildBlob(200, const Color(0x22FFFFFF)),
           ),
           Center(
             child: FadeTransition(
               opacity: _fadeAnimation,
               child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 30),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(30),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-                    child: Container(
-                      padding: const EdgeInsets.all(30),
+                padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 50),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Mode Switcher
+                    Container(
+                      padding: const EdgeInsets.all(4),
                       decoration: BoxDecoration(
                         color: Colors.white.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(30),
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.2),
-                          width: 1.5,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.1),
-                            blurRadius: 20,
-                            spreadRadius: 5,
-                          ),
-                        ],
+                        borderRadius: BorderRadius.circular(20),
                       ),
-                      child: Column(
+                      child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Container(
-                            padding: const EdgeInsets.all(15),
-                            decoration: const BoxDecoration(
-                              color: Colors.white,
-                              shape: BoxShape.circle,
-                            ),
-                            child: Image.asset(
-                              'android/app/src/logo.png',
-                              width: 60,
-                              height: 60,
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          const Text(
-                            'Campus Sync',
-                            style: TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                              letterSpacing: 1.2,
-                            ),
-                          ),
-                          const SizedBox(height: 30),
-                          _buildTextField(Icons.alternate_email, 'Email Address'),
-                          const SizedBox(height: 20),
-                          _buildPasswordField(Icons.lock_person_outlined, 'Password'),
-                          const SizedBox(height: 35),
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton(
-                              onPressed: () {
-                                // Returning users go directly to the Main Navigation
-                                Navigator.of(context).pushReplacement(
-                                  MaterialPageRoute(builder: (context) => const MainNavigationHolder()),
-                                );
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.white,
-                                foregroundColor: const Color(0xFF3F51B5),
-                                padding: const EdgeInsets.symmetric(vertical: 18),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(15),
-                                ),
-                                elevation: 0,
-                              ),
-                              child: const Text(
-                                'Sign In',
-                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 25),
-                          _buildSwitchAuth('New here?', 'Create Account', () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(builder: (context) => const RegisterPage()),
-                            );
-                          }),
+                          _buildModeButton('User', !_isAdminMode),
+                          _buildModeButton('Admin', _isAdminMode),
                         ],
                       ),
                     ),
-                  ),
+                    const SizedBox(height: 30),
+                    // Card
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(30),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                        child: Container(
+                          padding: const EdgeInsets.all(30),
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(30),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.2),
+                              width: 1.5,
+                            ),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: const BoxDecoration(
+                                  color: Colors.white,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: ClipOval(
+                                  child: Image.asset(
+                                    'android/app/src/logo.png',
+                                    width: 70,
+                                    height: 70,
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                              Text(
+                                _isAdminMode ? 'Admin Portal' : 'Campus Sync',
+                                style: const TextStyle(
+                                  fontSize: 28,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                  letterSpacing: 1.2,
+                                ),
+                              ),
+                              const SizedBox(height: 30),
+                              // Inputs - Using a common build method to ensure height stability
+                              _buildTextField(
+                                _isAdminMode ? Icons.badge_outlined : Icons.alternate_email,
+                                _isAdminMode ? 'Admin ID' : 'Email Address',
+                              ),
+                              const SizedBox(height: 20),
+                              _buildPasswordField(Icons.lock_person_outlined, 'Password'),
+                              const SizedBox(height: 35),
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton(
+                                  onPressed: () {
+                                    if (_isAdminMode) {
+                                      Navigator.of(context).pushReplacement(
+                                        MaterialPageRoute(builder: (context) => const AdminDashboard()),
+                                      );
+                                    } else {
+                                      Navigator.of(context).pushReplacement(
+                                        MaterialPageRoute(builder: (context) => const MainNavigationHolder()),
+                                      );
+                                    }
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.white,
+                                    foregroundColor: const Color(0xFF3F51B5),
+                                    padding: const EdgeInsets.symmetric(vertical: 18),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(15),
+                                    ),
+                                  ),
+                                  child: const Text(
+                                    'Login',
+                                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ),
+                              // Maintain fixed height for bottom switcher area
+                              const SizedBox(height: 25),
+                              SizedBox(
+                                height: 40, // Fixed height to prevent jump
+                                child: Visibility(
+                                  visible: !_isAdminMode,
+                                  maintainSize: true,
+                                  maintainAnimation: true,
+                                  maintainState: true,
+                                  child: Center(
+                                    child: _buildSwitchAuth('New here?', 'Create Account', () {
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(builder: (context) => const RegisterPage()),
+                                      );
+                                    }),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -397,20 +428,22 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
     );
   }
 
-  Widget _buildBlob(double size, Color color) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: color,
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: color.withOpacity(0.2),
-            blurRadius: 40,
-            spreadRadius: 20,
+  Widget _buildModeButton(String label, bool isSelected) {
+    return GestureDetector(
+      onTap: () => _toggleMode(label == 'Admin'),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 10),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.white : Colors.transparent,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? const Color(0xFF3F51B5) : Colors.white,
+            fontWeight: FontWeight.bold,
           ),
-        ],
+        ),
       ),
     );
   }
@@ -539,7 +572,7 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
         _strengthColor = Colors.transparent;
       } else if (value.length < 6) {
         _passwordStrength = 'Weak';
-        _strengthColor = const Color(0xFFFF8A80); // Softer Light Coral
+        _strengthColor = const Color(0xFFFF8A80);
       } else if (value.length < 10) {
         _passwordStrength = 'Medium';
         _strengthColor = Colors.orangeAccent;
@@ -553,19 +586,13 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
   void _handleRegister() {
     if (_passwordController.text != _confirmPasswordController.text) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Passwords do not match!'),
-          backgroundColor: Color(0xFFFF8A80),
-        ),
+        const SnackBar(content: Text('Passwords do not match!'), backgroundColor: Color(0xFFFF8A80)),
       );
       return;
     }
     if (_passwordController.text.length < 6) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Password too short!'),
-          backgroundColor: Color(0xFFFF8A80),
-        ),
+        const SnackBar(content: Text('Password too short!'), backgroundColor: Color(0xFFFF8A80)),
       );
       return;
     }
@@ -584,11 +611,7 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [
-                  Color(0xFF3F51B5),
-                  Color(0xFF673AB7),
-                  Color(0xFF03A9F4),
-                ],
+                colors: [Color(0xFF212121), Color(0xFF3F51B5)],
               ),
             ),
           ),
@@ -625,15 +648,18 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Container(
-                            padding: const EdgeInsets.all(15),
+                            padding: const EdgeInsets.all(8),
                             decoration: const BoxDecoration(
                               color: Colors.white,
                               shape: BoxShape.circle,
                             ),
-                            child: Image.asset(
-                              'android/app/src/logo.png',
-                              width: 60,
-                              height: 60,
+                            child: ClipOval(
+                              child: Image.asset(
+                                'android/app/src/logo.png',
+                                width: 60,
+                                height: 60,
+                                fit: BoxFit.cover,
+                              ),
                             ),
                           ),
                           const SizedBox(height: 20),
@@ -981,6 +1007,48 @@ class _SetupProfilePageState extends State<SetupProfilePage> with SingleTickerPr
   }
 }
 
+class AdminDashboard extends StatelessWidget {
+  const AdminDashboard({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Admin Dashboard', style: TextStyle(fontWeight: FontWeight.bold)),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () => Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (context) => const LoginPage()),
+            ),
+          ),
+        ],
+      ),
+      body: const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.admin_panel_settings_outlined, size: 80, color: Colors.grey),
+            SizedBox(height: 16),
+            Text(
+              'No options available',
+              style: TextStyle(fontSize: 18, color: Colors.grey, fontWeight: FontWeight.bold),
+            ),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 40, vertical: 8),
+              child: Text(
+                'All functionalities have been disabled for this dashboard.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class MainNavigationHolder extends StatefulWidget {
   const MainNavigationHolder({super.key});
 
@@ -1161,21 +1229,6 @@ class ProfilePage extends StatelessWidget {
         ListTile(
           leading: const Icon(Icons.help_outline, color: Color(0xFF3F51B5)),
           title: const Text('Help & Feedback'),
-          onTap: () {},
-        ),
-        const SizedBox(height: 20),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 20),
-          child: Text(
-            'Administration',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF3F51B5)),
-          ),
-        ),
-        const Divider(),
-        ListTile(
-          leading: const Icon(Icons.admin_panel_settings, color: Colors.redAccent),
-          title: const Text('Admin Login'),
-          subtitle: const Text('For coordinators and staff'),
           onTap: () {},
         ),
         const SizedBox(height: 40),
