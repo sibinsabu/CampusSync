@@ -1,8 +1,34 @@
 import 'dart:async';
+import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:device_frame/device_frame.dart';
+import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
+
+
+// Global Data Manager for reactivity and platform compatibility
+class AppData extends ChangeNotifier {
+  Uint8List? _profileImageBytes;
+  Uint8List? get profileImageBytes => _profileImageBytes;
+
+  void updateProfileImage(Uint8List? bytes) {
+    _profileImageBytes = bytes;
+    notifyListeners();
+  }
+
+  final List<Map<String, dynamic>> _events = [];
+  List<Map<String, dynamic>> get events => _events;
+
+  void addEvent(Map<String, dynamic> event) {
+    _events.add(event);
+    notifyListeners();
+  }
+}
+
+final AppData appData = AppData();
 
 void main() {
   runApp(const MyApp());
@@ -22,9 +48,7 @@ class MyApp extends StatelessWidget {
           seedColor: const Color(0xFF3F51B5), // Indigo
           primary: const Color(0xFF3F51B5),
           secondary: const Color(0xFF03A9F4), // Light Blue
-          background: const Color(0xFFFFFFFF), // White
           surface: const Color(0xFFFFFFFF),
-          onBackground: const Color(0xFF212121), // Dark Grey
           onSurface: const Color(0xFF212121),
         ),
         scaffoldBackgroundColor: const Color(0xFFFFFFFF),
@@ -98,6 +122,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   }
 
   void _navigateToLogin() {
+    HapticFeedback.mediumImpact();
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
         pageBuilder: (context, animation, secondaryAnimation) => const LoginPage(),
@@ -149,7 +174,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(8), // Reduced padding for a tighter circle
+                      padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
                         color: Colors.white,
                         shape: BoxShape.circle,
@@ -164,7 +189,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                       child: ClipOval(
                         child: Image.asset(
                           'android/app/src/logo.png',
-                          width: 140, // Slightly larger
+                          width: 140,
                           height: 140,
                           fit: BoxFit.cover,
                         ),
@@ -270,6 +295,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
   }
 
   void _toggleMode(bool admin) {
+    HapticFeedback.selectionClick();
     setState(() {
       _isAdminMode = admin;
     });
@@ -280,7 +306,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
     return Scaffold(
       body: Stack(
         children: [
-          // Background Gradient - Using the Admin dark theme for both
+          // Background Gradient
           Container(
             decoration: const BoxDecoration(
               gradient: LinearGradient(
@@ -359,7 +385,6 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                                 ),
                               ),
                               const SizedBox(height: 30),
-                              // Inputs - Using a common build method to ensure height stability
                               _buildTextField(
                                 _isAdminMode ? Icons.badge_outlined : Icons.alternate_email,
                                 _isAdminMode ? 'Admin ID' : 'Email Address',
@@ -371,6 +396,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                                 width: double.infinity,
                                 child: ElevatedButton(
                                   onPressed: () {
+                                    HapticFeedback.heavyImpact();
                                     if (_isAdminMode) {
                                       Navigator.of(context).pushReplacement(
                                         MaterialPageRoute(builder: (context) => const AdminDashboard()),
@@ -395,10 +421,9 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                                   ),
                                 ),
                               ),
-                              // Maintain fixed height for bottom switcher area
                               const SizedBox(height: 25),
                               SizedBox(
-                                height: 40, // Fixed height to prevent jump
+                                height: 40,
                                 child: Visibility(
                                   visible: !_isAdminMode,
                                   maintainSize: true,
@@ -406,6 +431,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                                   maintainState: true,
                                   child: Center(
                                     child: _buildSwitchAuth('New here?', 'Create Account', () {
+                                      HapticFeedback.lightImpact();
                                       Navigator.of(context).push(
                                         MaterialPageRoute(builder: (context) => const RegisterPage()),
                                       );
@@ -456,7 +482,10 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
         border: Border.all(color: Colors.white.withOpacity(0.1)),
       ),
       child: TextField(
+        onChanged: (_) => HapticFeedback.selectionClick(),
         style: const TextStyle(color: Colors.white),
+        cursorColor: Colors.white,
+        cursorWidth: 3,
         decoration: InputDecoration(
           hintText: hint,
           hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
@@ -477,7 +506,10 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
       ),
       child: TextField(
         obscureText: _obscurePassword,
+        onChanged: (_) => HapticFeedback.selectionClick(),
         style: const TextStyle(color: Colors.white),
+        cursorColor: Colors.white,
+        cursorWidth: 3,
         decoration: InputDecoration(
           hintText: hint,
           hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
@@ -488,6 +520,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
               color: Colors.white.withOpacity(0.7),
             ),
             onPressed: () {
+              HapticFeedback.lightImpact();
               setState(() {
                 _obscurePassword = !_obscurePassword;
               });
@@ -566,6 +599,7 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
   }
 
   void _checkPasswordStrength(String value) {
+    HapticFeedback.selectionClick();
     setState(() {
       if (value.isEmpty) {
         _passwordStrength = '';
@@ -584,18 +618,7 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
   }
 
   void _handleRegister() {
-    if (_passwordController.text != _confirmPasswordController.text) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Passwords do not match!'), backgroundColor: Color(0xFFFF8A80)),
-      );
-      return;
-    }
-    if (_passwordController.text.length < 6) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Password too short!'), backgroundColor: Color(0xFFFF8A80)),
-      );
-      return;
-    }
+    HapticFeedback.heavyImpact();
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (context) => const SetupProfilePage()),
     );
@@ -614,16 +637,6 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
                 colors: [Color(0xFF212121), Color(0xFF3F51B5)],
               ),
             ),
-          ),
-          Positioned(
-            top: -100,
-            right: -100,
-            child: _buildBlob(300, const Color(0x3303A9F4)),
-          ),
-          Positioned(
-            bottom: -50,
-            left: -80,
-            child: _buildBlob(250, const Color(0x333F51B5)),
           ),
           Center(
             child: FadeTransition(
@@ -712,6 +725,7 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
                           ),
                           const SizedBox(height: 20),
                           _buildSwitchAuth('Joined already?', 'Login', () {
+                            HapticFeedback.lightImpact();
                             Navigator.of(context).pop();
                           }),
                         ],
@@ -727,24 +741,6 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
     );
   }
 
-  Widget _buildBlob(double size, Color color) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: color,
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: color.withOpacity(0.2),
-            blurRadius: 40,
-            spreadRadius: 20,
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildTextField(IconData icon, String hint) {
     return Container(
       decoration: BoxDecoration(
@@ -753,7 +749,10 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
         border: Border.all(color: Colors.white.withOpacity(0.1)),
       ),
       child: TextField(
+        onChanged: (_) => HapticFeedback.selectionClick(),
         style: const TextStyle(color: Colors.white),
+        cursorColor: Colors.white,
+        cursorWidth: 3,
         decoration: InputDecoration(
           hintText: hint,
           hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
@@ -775,8 +774,10 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
       child: TextField(
         controller: controller,
         obscureText: isConfirm ? _obscureConfirmPassword : _obscurePassword,
-        onChanged: isConfirm ? null : _checkPasswordStrength,
+        onChanged: isConfirm ? (_) => HapticFeedback.selectionClick() : _checkPasswordStrength,
         style: const TextStyle(color: Colors.white),
+        cursorColor: Colors.white,
+        cursorWidth: 3,
         decoration: InputDecoration(
           hintText: hint,
           hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
@@ -789,6 +790,7 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
               color: Colors.white.withOpacity(0.7),
             ),
             onPressed: () {
+              HapticFeedback.lightImpact();
               setState(() {
                 if (isConfirm) {
                   _obscureConfirmPassword = !_obscureConfirmPassword;
@@ -862,6 +864,17 @@ class _SetupProfilePageState extends State<SetupProfilePage> with SingleTickerPr
     super.dispose();
   }
 
+  Future<void> _pickImage() async {
+    HapticFeedback.selectionClick();
+    final ImagePicker picker = ImagePicker();
+    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+    if (image != null) {
+      final bytes = await image.readAsBytes();
+      appData.updateProfileImage(bytes);
+      setState(() {});
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -872,11 +885,7 @@ class _SetupProfilePageState extends State<SetupProfilePage> with SingleTickerPr
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [
-                  Color(0xFF3F51B5),
-                  Color(0xFF673AB7),
-                  Color(0xFF03A9F4),
-                ],
+                colors: [Color(0xFF212121), Color(0xFF3F51B5)],
               ),
             ),
           ),
@@ -923,21 +932,25 @@ class _SetupProfilePageState extends State<SetupProfilePage> with SingleTickerPr
                           const SizedBox(height: 25),
                           Stack(
                             children: [
-                              const CircleAvatar(
+                              CircleAvatar(
                                 radius: 50,
                                 backgroundColor: Colors.white24,
-                                child: Icon(Icons.person, size: 60, color: Colors.white),
+                                backgroundImage: appData.profileImageBytes != null ? MemoryImage(appData.profileImageBytes!) : null,
+                                child: appData.profileImageBytes == null ? const Icon(Icons.person, size: 60, color: Colors.white) : null,
                               ),
                               Positioned(
                                 bottom: 0,
                                 right: 0,
-                                child: Container(
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFF03A9F4),
-                                    shape: BoxShape.circle,
+                                child: GestureDetector(
+                                  onTap: _pickImage,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: const BoxDecoration(
+                                      color: Color(0xFF03A9F4),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(Icons.camera_alt, size: 20, color: Colors.white),
                                   ),
-                                  child: const Icon(Icons.camera_alt, size: 20, color: Colors.white),
                                 ),
                               ),
                             ],
@@ -955,6 +968,7 @@ class _SetupProfilePageState extends State<SetupProfilePage> with SingleTickerPr
                             width: double.infinity,
                             child: ElevatedButton(
                               onPressed: () {
+                                HapticFeedback.heavyImpact();
                                 Navigator.of(context).pushReplacement(
                                   MaterialPageRoute(builder: (context) => const MainNavigationHolder()),
                                 );
@@ -994,7 +1008,10 @@ class _SetupProfilePageState extends State<SetupProfilePage> with SingleTickerPr
         border: Border.all(color: Colors.white.withOpacity(0.1)),
       ),
       child: TextField(
+        onChanged: (_) => HapticFeedback.selectionClick(),
         style: const TextStyle(color: Colors.white),
+        cursorColor: Colors.white,
+        cursorWidth: 3,
         decoration: InputDecoration(
           hintText: hint,
           hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
@@ -1018,33 +1035,438 @@ class AdminDashboard extends StatelessWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
-            onPressed: () => Navigator.of(context).pushReplacement(
-              MaterialPageRoute(builder: (context) => const LoginPage()),
-            ),
+            onPressed: () {
+              HapticFeedback.mediumImpact();
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (context) => const LoginPage()),
+              );
+            },
           ),
         ],
       ),
-      body: const Center(
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(Icons.admin_panel_settings_outlined, size: 80, color: Colors.grey),
-            SizedBox(height: 16),
-            Text(
-              'No options available',
-              style: TextStyle(fontSize: 18, color: Colors.grey, fontWeight: FontWeight.bold),
+            const Text(
+              'Event Management',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF3F51B5)),
             ),
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: 40, vertical: 8),
-              child: Text(
-                'All functionalities have been disabled for this dashboard.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey),
+            const SizedBox(height: 20),
+            _buildActionCard(
+              context,
+              'Add New Event',
+              'Create a workshop, fest, or seminar.',
+              Icons.add_circle_outline,
+              Colors.green,
+              () {
+                HapticFeedback.lightImpact();
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (context) => const AddEventPage()),
+                );
+              },
+            ),
+            const SizedBox(height: 15),
+            _buildActionCard(
+              context,
+              'Ongoing Events',
+              'View and manage events currently live.',
+              Icons.event_available_outlined,
+              Colors.orange,
+              () {
+                HapticFeedback.lightImpact();
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (context) => const OngoingEventsPage()),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionCard(BuildContext context, String title, String subtitle, IconData icon, Color color, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 15,
+              offset: const Offset(0, 5),
+            ),
+          ],
+          border: Border.all(color: Colors.grey.withOpacity(0.1)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: color, size: 30),
+            ),
+            const SizedBox(width: 20),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: Colors.grey),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class AddEventPage extends StatefulWidget {
+  const AddEventPage({super.key});
+
+  @override
+  State<AddEventPage> createState() => _AddEventPageState();
+}
+
+class _AddEventPageState extends State<AddEventPage> {
+  bool _isFree = true;
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _titleController = TextEditingController();
+  final TextEditingController _descriptionController = TextEditingController();
+  final TextEditingController _participantsController = TextEditingController();
+  final TextEditingController _feeController = TextEditingController();
+  Uint8List? _eventImageBytes;
+
+  Future<void> _pickImage() async {
+    HapticFeedback.selectionClick();
+    final ImagePicker picker = ImagePicker();
+    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+    if (image != null) {
+      final bytes = await image.readAsBytes();
+      setState(() => _eventImageBytes = bytes);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Add New Event'),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(25),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildSectionTitle('Event Basics'),
+            const SizedBox(height: 15),
+            _buildInputField('Organizer Name', Icons.person_outline, _nameController),
+            const SizedBox(height: 15),
+            _buildInputField('Event Title', Icons.title, _titleController),
+            const SizedBox(height: 15),
+            _buildInputField('Description', Icons.description_outlined, _descriptionController, maxLines: 4),
+            const SizedBox(height: 25),
+            _buildSectionTitle('Event Settings'),
+            const SizedBox(height: 15),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 5),
+              decoration: BoxDecoration(
+                color: Colors.grey[50],
+                borderRadius: BorderRadius.circular(15),
+                border: Border.all(color: Colors.grey[200]!),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.payments_outlined, color: Colors.grey),
+                  const SizedBox(width: 15),
+                  const Text('Payment Type', style: TextStyle(fontWeight: FontWeight.w500)),
+                  const Spacer(),
+                  ChoiceChip(
+                    label: const Text('Free'),
+                    selected: _isFree,
+                    onSelected: (val) {
+                      HapticFeedback.selectionClick();
+                      setState(() => _isFree = true);
+                    },
+                  ),
+                  const SizedBox(width: 10),
+                  ChoiceChip(
+                    label: const Text('Paid'),
+                    selected: !_isFree,
+                    onSelected: (val) {
+                      HapticFeedback.selectionClick();
+                      setState(() => _isFree = false);
+                    },
+                  ),
+                ],
+              ),
+            ),
+            if (!_isFree) ...[
+              const SizedBox(height: 15),
+              TextField(
+                controller: _feeController,
+                onChanged: (_) => HapticFeedback.selectionClick(),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                cursorColor: const Color(0xFF3F51B5),
+                cursorWidth: 3,
+                decoration: InputDecoration(
+                  labelText: 'Registration Fee (₹)',
+                  prefixIcon: const Icon(Icons.currency_rupee, color: Colors.grey),
+                  filled: true,
+                  fillColor: Colors.grey[50],
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(15),
+                    borderSide: BorderSide(color: Colors.grey[300]!),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(15),
+                    borderSide: BorderSide(color: Colors.grey[200]!),
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 15),
+            _buildInputField('Max Participants', Icons.groups_outlined, _participantsController, keyboardType: TextInputType.number),
+            const SizedBox(height: 25),
+            _buildSectionTitle('Media'),
+            const SizedBox(height: 15),
+            GestureDetector(
+              onTap: _pickImage,
+              child: Container(
+                height: 150,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.grey[300]!, style: BorderStyle.solid),
+                  image: _eventImageBytes != null
+                      ? DecorationImage(image: MemoryImage(_eventImageBytes!), fit: BoxFit.cover)
+                      : null,
+                ),
+                child: _eventImageBytes == null
+                    ? const Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.add_photo_alternate_outlined, size: 40, color: Colors.grey),
+                          SizedBox(height: 10),
+                          Text('Upload Cover Photo', style: TextStyle(color: Colors.grey)),
+                        ],
+                      )
+                    : null,
+              ),
+            ),
+            const SizedBox(height: 40),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () {
+                  HapticFeedback.heavyImpact();
+                  if (_titleController.text.isNotEmpty) {
+                    double fee = 0.0;
+                    if (!_isFree && _feeController.text.isNotEmpty) {
+                      fee = double.tryParse(_feeController.text) ?? 0.0;
+                    }
+                    appData.addEvent({
+                      'title': _titleController.text,
+                      'organizer': _nameController.text,
+                      'participants': '0/${_participantsController.text.isEmpty ? "∞" : _participantsController.text}',
+                      'type': _isFree ? 'Free' : 'Paid',
+                      'fee': fee,
+                      'imageBytes': _eventImageBytes,
+                      'icon': Icons.event,
+                      'color': Colors.indigo,
+                    });
+                  }
+                  Navigator.of(context).pop();
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF3F51B5),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 18),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                ),
+                child: const Text('Publish Event', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Text(
+      title,
+      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF3F51B5)),
+    );
+  }
+
+  Widget _buildInputField(String label, IconData icon, TextEditingController controller, {int maxLines = 1, TextInputType keyboardType = TextInputType.text}) {
+    return TextField(
+      controller: controller,
+      onChanged: (_) => HapticFeedback.selectionClick(),
+      maxLines: maxLines,
+      keyboardType: keyboardType,
+      cursorColor: const Color(0xFF3F51B5),
+      cursorWidth: 3,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon, color: Colors.grey),
+        filled: true,
+        fillColor: Colors.grey[50],
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: BorderSide(color: Colors.grey[300]!),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: BorderSide(color: Colors.grey[200]!),
+        ),
+      ),
+    );
+  }
+}
+
+class OngoingEventsPage extends StatelessWidget {
+  const OngoingEventsPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: appData,
+      builder: (context, _) {
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('Ongoing Events'),
+          ),
+          body: appData.events.isEmpty
+              ? const Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.event_busy_outlined, size: 80, color: Colors.grey),
+                      SizedBox(height: 16),
+                      Text(
+                        'No ongoing events',
+                        style: TextStyle(fontSize: 18, color: Colors.grey, fontWeight: FontWeight.bold),
+                      ),
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 40, vertical: 8),
+                        child: Text(
+                          'There are no live events at the moment. Check back later!',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.all(20),
+                  itemCount: appData.events.length,
+                  itemBuilder: (context, index) {
+                    final event = appData.events[index];
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 20),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      elevation: 2,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(20),
+                        child: Column(
+                          children: [
+                            if (event['imageBytes'] != null)
+                              Image.memory(
+                                event['imageBytes'] as Uint8List,
+                                height: 150,
+                                width: double.infinity,
+                                fit: BoxFit.cover,
+                              ),
+                            Padding(
+                              padding: const EdgeInsets.all(15),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: (event['color'] as Color).withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(15),
+                                    ),
+                                    child: Icon(event['icon'] as IconData, color: event['color'] as Color, size: 30),
+                                  ),
+                                  const SizedBox(width: 20),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          event['title'],
+                                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                                        ),
+                                        Text(
+                                          event['organizer'],
+                                          style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Row(
+                                          children: [
+                                            Icon(Icons.people_outline, size: 16, color: Colors.grey[600]),
+                                            const SizedBox(width: 5),
+                                            Text(
+                                              event['participants'],
+                                              style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                                            ),
+                                            const SizedBox(width: 15),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: event['type'] == 'Free' ? Colors.green.withOpacity(0.1) : Colors.red.withOpacity(0.1),
+                                                borderRadius: BorderRadius.circular(5),
+                                              ),
+                                              child: Text(
+                                                event['type'] == 'Free' ? 'Free' : '₹${event['fee']}',
+                                                style: TextStyle(
+                                                  color: event['type'] == 'Free' ? Colors.green : Colors.red,
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        );
+      },
     );
   }
 }
@@ -1066,6 +1488,7 @@ class _MainNavigationHolderState extends State<MainNavigationHolder> {
   ];
 
   void _onItemTapped(int index) {
+    HapticFeedback.selectionClick();
     setState(() {
       _selectedIndex = index;
     });
@@ -1073,53 +1496,53 @@ class _MainNavigationHolderState extends State<MainNavigationHolder> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          children: [
-            const CircleAvatar(
-              radius: 20,
-              backgroundColor: Colors.white,
-              child: Padding(
-                padding: EdgeInsets.all(2.0),
-                child: CircleAvatar(
-                  radius: 18,
-                  backgroundImage: AssetImage('android/app/src/logo.png'),
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            const Text(
+    return ListenableBuilder(
+      listenable: appData,
+      builder: (context, _) {
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text(
               'Campus Sync',
               style: TextStyle(
                 fontWeight: FontWeight.bold,
               ),
             ),
-          ],
-        ),
-      ),
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: _pages,
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        items: const <BottomNavigationBarItem>[
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_rounded),
-            label: 'Home',
+            actions: [
+              Padding(
+                padding: const EdgeInsets.only(right: 15.0),
+                child: CircleAvatar(
+                  radius: 18,
+                  backgroundImage: appData.profileImageBytes != null
+                      ? MemoryImage(appData.profileImageBytes!)
+                      : const AssetImage('android/app/src/logo.png') as ImageProvider,
+                ),
+              ),
+            ],
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.calendar_today_rounded),
-            label: 'Your Events',
+          body: IndexedStack(
+            index: _selectedIndex,
+            children: _pages,
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person_rounded),
-            label: 'Profile',
+          bottomNavigationBar: BottomNavigationBar(
+            items: const <BottomNavigationBarItem>[
+              BottomNavigationBarItem(
+                icon: Icon(Icons.home_rounded),
+                label: 'Home',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.calendar_today_rounded),
+                label: 'Events',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.person_rounded),
+                label: 'Profile',
+              ),
+            ],
+            currentIndex: _selectedIndex,
+            onTap: _onItemTapped,
           ),
-        ],
-        currentIndex: _selectedIndex,
-        onTap: _onItemTapped,
-      ),
+        );
+      },
     );
   }
 }
@@ -1129,11 +1552,66 @@ class HomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
-      child: Text(
-        'Home Page - Campus Events',
-        style: TextStyle(fontSize: 20, color: Color(0xFF212121)),
-      ),
+    return ListenableBuilder(
+      listenable: appData,
+      builder: (context, _) {
+        if (appData.events.isEmpty) {
+          return const Center(
+            child: Text(
+              'Home Page - No Campus Events yet',
+              style: TextStyle(fontSize: 20, color: Color(0xFF212121)),
+            ),
+          );
+        }
+        return ListView.builder(
+          padding: const EdgeInsets.all(20),
+          itemCount: appData.events.length,
+          itemBuilder: (context, index) {
+            final event = appData.events[index];
+            return Card(
+              margin: const EdgeInsets.only(bottom: 20),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              child: Column(
+                children: [
+                  if (event['imageBytes'] != null)
+                    ClipRRect(
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                      child: Image.memory(
+                        event['imageBytes'] as Uint8List,
+                        height: 180,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ListTile(
+                    title: Text(event['title'], style: const TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(event['organizer']),
+                        Text(
+                          event['type'] == 'Free' ? 'Free' : 'Fee: ₹${event['fee']}',
+                          style: TextStyle(
+                            color: event['type'] == 'Free' ? Colors.green : Colors.red,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                    trailing: ElevatedButton(
+                      onPressed: () {
+                        HapticFeedback.mediumImpact();
+                      },
+                      child: const Text('Register'),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }
@@ -1152,103 +1630,162 @@ class YourEventsPage extends StatelessWidget {
   }
 }
 
-class ProfilePage extends StatelessWidget {
+class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
 
   @override
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<ProfilePage> {
+  Future<void> _pickImage() async {
+    HapticFeedback.selectionClick();
+    final ImagePicker picker = ImagePicker();
+    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+    if (image != null) {
+      final bytes = await image.readAsBytes();
+      appData.updateProfileImage(bytes);
+      setState(() {});
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.symmetric(vertical: 20),
-      children: [
-        Center(
-          child: Column(
-            children: [
-              Stack(
+    return ListenableBuilder(
+      listenable: appData,
+      builder: (context, _) {
+        return ListView(
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          children: [
+            Center(
+              child: Column(
                 children: [
-                  const CircleAvatar(
-                    radius: 50,
-                    backgroundColor: Color(0xFF3F51B5),
-                    child: Icon(Icons.person, size: 60, color: Colors.white),
-                  ),
-                  Positioned(
-                    bottom: 0,
-                    right: 0,
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF03A9F4),
-                        shape: BoxShape.circle,
+                  Stack(
+                    children: [
+                      CircleAvatar(
+                        radius: 50,
+                        backgroundColor: const Color(0xFF3F51B5),
+                        backgroundImage: appData.profileImageBytes != null ? MemoryImage(appData.profileImageBytes!) : null,
+                        child: appData.profileImageBytes == null ? const Icon(Icons.person, size: 60, color: Colors.white) : null,
                       ),
-                      child: const Icon(Icons.camera_alt, size: 20, color: Colors.white),
-                    ),
+                      Positioned(
+                        bottom: 0,
+                        right: 0,
+                        child: GestureDetector(
+                          onTap: _pickImage,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF03A9F4),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.edit, size: 20, color: Colors.white),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 15),
+                  const Text(
+                    'John Doe',
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                  ),
+                  const Text(
+                    'john.doe@university.com',
+                    style: TextStyle(color: Colors.grey),
                   ),
                 ],
               ),
-              const SizedBox(height: 15),
-              const Text(
-                'John Doe',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-              ),
-              const Text(
-                'john.doe@university.com',
-                style: TextStyle(color: Colors.grey),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 30),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 20),
-          child: Text(
-            'Information',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF3F51B5)),
-          ),
-        ),
-        const Divider(),
-        ListTile(
-          leading: const Icon(Icons.school, color: Color(0xFF3F51B5)),
-          title: const Text('Class'),
-          subtitle: const Text('B.Tech S6'),
-          onTap: () {},
-        ),
-        ListTile(
-          leading: const Icon(Icons.business, color: Color(0xFF3F51B5)),
-          title: const Text('Department'),
-          subtitle: const Text('Computer Science'),
-          onTap: () {},
-        ),
-        const SizedBox(height: 20),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 20),
-          child: Text(
-            'Support',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF3F51B5)),
-          ),
-        ),
-        const Divider(),
-        ListTile(
-          leading: const Icon(Icons.help_outline, color: Color(0xFF3F51B5)),
-          title: const Text('Help & Feedback'),
-          onTap: () {},
-        ),
-        const SizedBox(height: 40),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: OutlinedButton(
-            onPressed: () {
-              Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute(builder: (context) => const SplashScreen()),
-                (route) => false,
-              );
-            },
-            style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: Colors.red),
-              foregroundColor: Colors.red,
             ),
-            child: const Text('Logout'),
-          ),
-        ),
-      ],
+            const SizedBox(height: 30),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20),
+              child: Text(
+                'Information',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF3F51B5)),
+              ),
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.school, color: Color(0xFF3F51B5)),
+              title: const Text('Class'),
+              subtitle: const Text('B.Tech S6'),
+              onTap: () {
+                HapticFeedback.selectionClick();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.business, color: Color(0xFF3F51B5)),
+              title: const Text('Department'),
+              subtitle: const Text('Computer Science'),
+              onTap: () {
+                HapticFeedback.selectionClick();
+              },
+            ),
+            const SizedBox(height: 20),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20),
+              child: Text(
+                'My Events',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF3F51B5)),
+              ),
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.event_note, color: Color(0xFF3F51B5)),
+              title: const Text('My Registered Events'),
+              trailing: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF3F51B5).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Text(
+                  '0',
+                  style: TextStyle(color: Color(0xFF3F51B5), fontWeight: FontWeight.bold),
+                ),
+              ),
+              onTap: () {
+                HapticFeedback.selectionClick();
+              },
+            ),
+            const SizedBox(height: 20),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20),
+              child: Text(
+                'Support',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF3F51B5)),
+              ),
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.help_outline, color: Color(0xFF3F51B5)),
+              title: const Text('Help & Feedback'),
+              onTap: () {
+                HapticFeedback.selectionClick();
+              },
+            ),
+            const SizedBox(height: 40),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: OutlinedButton(
+                onPressed: () {
+                  HapticFeedback.mediumImpact();
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(builder: (context) => const SplashScreen()),
+                    (route) => false,
+                  );
+                },
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: Colors.red),
+                  foregroundColor: Colors.red,
+                ),
+                child: const Text('Logout'),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
