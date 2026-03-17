@@ -835,6 +835,11 @@ class AdminDashboard extends StatelessWidget {
                   title: const Text('Add New Event'),
                   onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (context) => const AddEventPage())),
                 ),
+                ListTile(
+                  leading: const Icon(Icons.edit_calendar_rounded, color: Colors.orange),
+                  title: const Text('Manage Events'),
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (context) => const ManageEventsPage())),
+                ),
               ],
             ),
           );
@@ -875,6 +880,124 @@ class ManageUsersPage extends StatelessWidget {
   }
 }
 
+class ManageEventsPage extends StatelessWidget {
+  const ManageEventsPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Manage Events')),
+      body: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance.collection('events').snapshots(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+          final events = snapshot.data!.docs;
+          if (events.isEmpty) return const Center(child: Text('No events published yet.'));
+
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: events.length,
+            itemBuilder: (context, i) {
+              final eventId = events[i].id;
+              final data = events[i].data() as Map<String, dynamic>;
+              final title = data['title'] ?? 'No Title';
+              final imageUrl = data['imageUrl'];
+
+              return Card(
+                margin: const EdgeInsets.only(bottom: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                elevation: 3,
+                child: Column(
+                  children: [
+                    if (imageUrl != null)
+                      ClipRRect(
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
+                        child: Image.network(imageUrl, height: 150, width: double.infinity, fit: BoxFit.cover),
+                      ),
+                    ListTile(
+                      title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+                      subtitle: Text(data['isPaid'] == true ? 'Price: ₹${data['price']}' : 'Free Event'),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.people_outline, color: Colors.blue),
+                            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => ViewParticipantsPage(eventId: eventId, eventTitle: title))),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline, color: Colors.red),
+                            onPressed: () => _confirmDelete(context, eventId),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  void _confirmDelete(BuildContext context, String eventId) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Event?'),
+        content: const Text('Are you sure you want to delete this event? This action cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () async {
+              await FirebaseFirestore.instance.collection('events').doc(eventId).delete();
+              if (context.mounted) Navigator.pop(context);
+            },
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class ViewParticipantsPage extends StatelessWidget {
+  final String eventId;
+  final String eventTitle;
+  const ViewParticipantsPage({super.key, required this.eventId, required this.eventTitle});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Participants: $eventTitle')),
+      body: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance.collection('events').doc(eventId).collection('registrations').snapshots(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+          final registrations = snapshot.data!.docs;
+          if (registrations.isEmpty) return const Center(child: Text('No participants registered yet.'));
+
+          return ListView.builder(
+            itemCount: registrations.length,
+            itemBuilder: (context, i) {
+              final regData = registrations[i].data() as Map<String, dynamic>;
+              return ListTile(
+                leading: CircleAvatar(child: Text('${i + 1}')),
+                title: Text(regData['userName'] ?? 'Unknown User'),
+                subtitle: Text(regData['userEmail'] ?? 'No Email'),
+                trailing: Text(regData['registeredAt'] != null 
+                  ? (regData['registeredAt'] as Timestamp).toDate().toString().split(' ')[0] 
+                  : ''),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
 class AddEventPage extends StatefulWidget {
   const AddEventPage({super.key});
 
@@ -884,17 +1007,64 @@ class AddEventPage extends StatefulWidget {
 
 class _AddEventPageState extends State<AddEventPage> {
   final _titleController = TextEditingController();
+  final _descriptionController = TextEditingController();
+  final _priceController = TextEditingController();
+  bool _isPaid = false;
+  Uint8List? _coverImageBytes;
   bool _isLoading = false;
 
+  Future<void> _pickCoverImage() async {
+    try {
+      final picker = ImagePicker();
+      final picked = await picker.pickImage(source: ImageSource.gallery, maxWidth: 1024, maxHeight: 1024, imageQuality: 85);
+      if (picked != null) {
+        final bytes = await picked.readAsBytes();
+        setState(() => _coverImageBytes = bytes);
+      }
+    } catch (e) {
+      debugPrint('Error picking cover image: $e');
+    }
+  }
+
   Future<void> _publishEvent() async {
-    if (_titleController.text.isEmpty) return;
+    final title = _titleController.text.trim();
+    final description = _descriptionController.text.trim();
+    final priceStr = _priceController.text.trim();
+
+    if (title.isEmpty || description.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill title and description')));
+      return;
+    }
+
+    if (_isPaid && priceStr.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter price in INR')));
+      return;
+    }
+
     setState(() => _isLoading = true);
     try {
+      String? imageUrl;
+      if (_coverImageBytes != null) {
+        final ref = FirebaseStorage.instance.ref().child('event_covers/${DateTime.now().millisecondsSinceEpoch}.jpg');
+        await ref.putData(_coverImageBytes!, SettableMetadata(contentType: 'image/jpeg'));
+        imageUrl = await ref.getDownloadURL();
+      }
+
       await FirebaseFirestore.instance.collection('events').add({
-        'title': _titleController.text.trim(),
+        'title': title,
+        'description': description,
+        'isPaid': _isPaid,
+        'price': _isPaid ? double.tryParse(priceStr) ?? 0.0 : 0.0,
+        'imageUrl': imageUrl,
         'createdAt': FieldValue.serverTimestamp(),
       });
-      if (mounted) Navigator.pop(context);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Event published successfully!')));
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -904,14 +1074,107 @@ class _AddEventPageState extends State<AddEventPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Add Event')),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            TextField(controller: _titleController, decoration: const InputDecoration(labelText: 'Event Title')),
-            const SizedBox(height: 20),
-            ElevatedButton(onPressed: _isLoading ? null : _publishEvent, child: const Text('Publish')),
-          ],
+      body: _isLoading 
+        ? const Center(child: CircularProgressIndicator())
+        : SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildSectionTitle('Event Basics'),
+                const SizedBox(height: 16),
+                _buildTextField('Event Name', _titleController, Icons.title_rounded),
+                const SizedBox(height: 16),
+                _buildTextField('Description', _descriptionController, Icons.description_rounded, maxLines: 4),
+                
+                const SizedBox(height: 32),
+                _buildSectionTitle('Pricing Details'),
+                const SizedBox(height: 8),
+                SwitchListTile(
+                  title: const Text('Is this a paid event?', style: TextStyle(fontWeight: FontWeight.w500)),
+                  subtitle: Text(_isPaid ? 'Participants will be charged' : 'Free for all users'),
+                  value: _isPaid,
+                  onChanged: (val) => setState(() => _isPaid = val),
+                  activeColor: const Color(0xFF3F51B5),
+                  contentPadding: EdgeInsets.zero,
+                ),
+                if (_isPaid) ...[
+                  const SizedBox(height: 8),
+                  _buildTextField('Price (INR)', _priceController, Icons.currency_rupee_rounded, keyboardType: TextInputType.number),
+                ],
+
+                const SizedBox(height: 32),
+                _buildSectionTitle('Event Cover'),
+                const SizedBox(height: 16),
+                GestureDetector(
+                  onTap: _pickCoverImage,
+                  child: Container(
+                    width: double.infinity,
+                    height: 200,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[100],
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.grey[300]!, width: 2, style: BorderStyle.solid),
+                    ),
+                    child: _coverImageBytes != null
+                        ? ClipRRect(
+                            borderRadius: BorderRadius.circular(18),
+                            child: Image.memory(_coverImageBytes!, fit: BoxFit.cover),
+                          )
+                        : Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.add_photo_alternate_rounded, size: 48, color: Colors.grey[400]),
+                              const SizedBox(height: 8),
+                              Text('Tap to select cover image', style: TextStyle(color: Colors.grey[600])),
+                            ],
+                          ),
+                  ),
+                ),
+                const SizedBox(height: 40),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _publishEvent,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF3F51B5),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 18),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                      elevation: 4,
+                    ),
+                    child: const Text('Publish Event', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+    );
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Text(
+      title,
+      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF3F51B5), letterSpacing: 1.2),
+    );
+  }
+
+  Widget _buildTextField(String label, TextEditingController controller, IconData icon, {int maxLines = 1, TextInputType keyboardType = TextInputType.text}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: Colors.grey[200]!),
+      ),
+      child: TextField(
+        controller: controller,
+        maxLines: maxLines,
+        keyboardType: keyboardType,
+        decoration: InputDecoration(
+          labelText: label,
+          prefixIcon: Icon(icon, color: const Color(0xFF3F51B5)),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         ),
       ),
     );
@@ -934,6 +1197,12 @@ class _MainNavigationHolderState extends State<MainNavigationHolder> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Campus Sync'),
+        leading: _selectedIndex != 0
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => setState(() => _selectedIndex = 0),
+              )
+            : null,
         actions: [
           ListenableBuilder(
             listenable: appData,
@@ -1236,7 +1505,35 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 30),
+                  const SizedBox(height: 15),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        showDialog(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Text('Help & Support'),
+                            content: const Text('For any queries or support, please contact us at support@campussync.com'),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: const Text('Close'),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.help_outline_rounded, color: Color(0xFF3F51B5), size: 20),
+                      label: const Text('Help & Support', style: TextStyle(color: Color(0xFF3F51B5), fontWeight: FontWeight.w600)),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Color(0xFF3F51B5), width: 1.5),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 15),
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
