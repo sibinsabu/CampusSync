@@ -902,6 +902,7 @@ class ManageEventsPage extends StatelessWidget {
               final data = events[i].data() as Map<String, dynamic>;
               final title = data['title'] ?? 'No Title';
               final imageUrl = data['imageUrl'];
+              final maxReg = data['maxRegistrations'] ?? 100;
 
               return Card(
                 margin: const EdgeInsets.only(bottom: 16),
@@ -916,7 +917,33 @@ class ManageEventsPage extends StatelessWidget {
                       ),
                     ListTile(
                       title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-                      subtitle: Text(data['isPaid'] == true ? 'Price: ₹${data['price']}' : 'Free Event'),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(data['isPaid'] == true ? 'Price: ₹${data['price']}' : 'Free Event'),
+                          const SizedBox(height: 8),
+                          StreamBuilder<QuerySnapshot>(
+                            stream: FirebaseFirestore.instance.collection('events').doc(eventId).collection('registrations').snapshots(),
+                            builder: (context, regSnap) {
+                              final count = regSnap.hasData ? regSnap.data!.docs.length : 0;
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  LinearProgressIndicator(
+                                    value: count / maxReg,
+                                    backgroundColor: Colors.grey[200],
+                                    valueColor: AlwaysStoppedAnimation<Color>(count >= maxReg ? Colors.red : Colors.green),
+                                    minHeight: 8,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text('$count / $maxReg slots filled', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+                                ],
+                              );
+                            }
+                          ),
+                        ],
+                      ),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -1009,6 +1036,7 @@ class _AddEventPageState extends State<AddEventPage> {
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _priceController = TextEditingController();
+  final _maxRegController = TextEditingController(text: '100');
   bool _isPaid = false;
   Uint8List? _coverImageBytes;
   bool _isLoading = false;
@@ -1030,6 +1058,7 @@ class _AddEventPageState extends State<AddEventPage> {
     final title = _titleController.text.trim();
     final description = _descriptionController.text.trim();
     final priceStr = _priceController.text.trim();
+    final maxRegStr = _maxRegController.text.trim();
 
     if (title.isEmpty || description.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill title and description')));
@@ -1055,6 +1084,7 @@ class _AddEventPageState extends State<AddEventPage> {
         'description': description,
         'isPaid': _isPaid,
         'price': _isPaid ? double.tryParse(priceStr) ?? 0.0 : 0.0,
+        'maxRegistrations': int.tryParse(maxRegStr) ?? 100,
         'imageUrl': imageUrl,
         'createdAt': FieldValue.serverTimestamp(),
       });
@@ -1086,6 +1116,8 @@ class _AddEventPageState extends State<AddEventPage> {
                 _buildTextField('Event Name', _titleController, Icons.title_rounded),
                 const SizedBox(height: 16),
                 _buildTextField('Description', _descriptionController, Icons.description_rounded, maxLines: 4),
+                const SizedBox(height: 16),
+                _buildTextField('Max Registrations', _maxRegController, Icons.people_alt_rounded, keyboardType: TextInputType.number),
                 
                 const SizedBox(height: 32),
                 _buildSectionTitle('Pricing Details'),
@@ -1277,24 +1309,83 @@ class HomePage extends StatelessWidget {
             builder: (context, snapshot) {
               if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
               final events = snapshot.data!.docs;
+              if (events.isEmpty) return const Center(child: Text('No events published yet.'));
+
               return ListView.builder(
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                 itemCount: events.length,
                 itemBuilder: (context, i) {
+                  final eventId = events[i].id;
                   final data = events[i].data() as Map<String, dynamic>;
+                  final title = data['title'] ?? 'No Title';
+                  final imageUrl = data['imageUrl'];
+                  final maxReg = data['maxRegistrations'] ?? 100;
+
                   return Card(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                    elevation: 2,
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.all(15),
-                      leading: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(color: const Color(0xFF3F51B5).withValues(alpha: 0.1), shape: BoxShape.circle),
-                        child: const Icon(Icons.event, color: Color(0xFF3F51B5)),
+                    margin: const EdgeInsets.only(bottom: 16),
+                    clipBehavior: Clip.antiAlias,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    elevation: 4,
+                    child: InkWell(
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => EventDetailsPage(eventId: eventId, eventData: data))),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (imageUrl != null)
+                            Image.network(imageUrl, height: 160, width: double.infinity, fit: BoxFit.cover),
+                          Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                                          const SizedBox(height: 4),
+                                          Text(data['isPaid'] == true ? 'Price: ₹${data['price']}' : 'Free Event', style: TextStyle(color: Colors.grey[600])),
+                                        ],
+                                      ),
+                                    ),
+                                    ElevatedButton(
+                                      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => EventDetailsPage(eventId: eventId, eventData: data))),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(0xFF3F51B5),
+                                        foregroundColor: Colors.white,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                      ),
+                                      child: const Text('RSVP Now'),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                StreamBuilder<QuerySnapshot>(
+                                  stream: FirebaseFirestore.instance.collection('events').doc(eventId).collection('registrations').snapshots(),
+                                  builder: (context, regSnap) {
+                                    final count = regSnap.hasData ? regSnap.data!.docs.length : 0;
+                                    return Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        LinearProgressIndicator(
+                                          value: count / maxReg,
+                                          backgroundColor: Colors.grey[200],
+                                          valueColor: AlwaysStoppedAnimation<Color>(count >= maxReg ? Colors.red : const Color(0xFF3F51B5)),
+                                          minHeight: 8,
+                                          borderRadius: BorderRadius.circular(10),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text('$count / $maxReg slots filled', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+                                      ],
+                                    );
+                                  }
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
-                      title: Text(data['title'] ?? 'No Title', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                      trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
                     ),
                   );
                 },
@@ -1303,6 +1394,143 @@ class HomePage extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class EventDetailsPage extends StatefulWidget {
+  final String eventId;
+  final Map<String, dynamic> eventData;
+  const EventDetailsPage({super.key, required this.eventId, required this.eventData});
+
+  @override
+  State<EventDetailsPage> createState() => _EventDetailsPageState();
+}
+
+class _EventDetailsPageState extends State<EventDetailsPage> {
+  bool _isRegistering = false;
+
+  Future<void> _registerForEvent() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    // Check if event is full
+    final maxReg = widget.eventData['maxRegistrations'] ?? 100;
+    final regDocs = await FirebaseFirestore.instance.collection('events').doc(widget.eventId).collection('registrations').get();
+    if (regDocs.docs.length >= maxReg) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sorry, this event is already full!')));
+      return;
+    }
+
+    setState(() => _isRegistering = true);
+    try {
+      await FirebaseFirestore.instance.collection('events').doc(widget.eventId).collection('registrations').doc(user.uid).set({
+        'userId': user.uid,
+        'userName': appData.userName ?? 'Anonymous',
+        'userEmail': user.email,
+        'registeredAt': FieldValue.serverTimestamp(),
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Registered Successfully!')));
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+    } finally {
+      if (mounted) setState(() => _isRegistering = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final data = widget.eventData;
+    final maxReg = data['maxRegistrations'] ?? 100;
+    return Scaffold(
+      body: CustomScrollView(
+        slivers: [
+          SliverAppBar(
+            expandedHeight: 300,
+            pinned: true,
+            flexibleSpace: FlexibleSpaceBar(
+              background: data['imageUrl'] != null
+                  ? Image.network(data['imageUrl'], fit: BoxFit.cover)
+                  : Container(color: const Color(0xFF3F51B5), child: const Icon(Icons.event, size: 80, color: Colors.white)),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(data['title'] ?? '', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Color(0xFF1A237E))),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(color: const Color(0xFF3F51B5).withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
+                        child: Text(
+                          data['isPaid'] == true ? '₹${data['price']}' : 'FREE',
+                          style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF3F51B5)),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance.collection('events').doc(widget.eventId).collection('registrations').snapshots(),
+                    builder: (context, regSnap) {
+                      final count = regSnap.hasData ? regSnap.data!.docs.length : 0;
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          LinearProgressIndicator(
+                            value: count / maxReg,
+                            backgroundColor: Colors.grey[200],
+                            valueColor: AlwaysStoppedAnimation<Color>(count >= maxReg ? Colors.red : const Color(0xFF3F51B5)),
+                            minHeight: 10,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          const SizedBox(height: 6),
+                          Text('$count / $maxReg registrations', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                        ],
+                      );
+                    }
+                  ),
+                  const SizedBox(height: 24),
+                  const Text('About this event', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                  const SizedBox(height: 10),
+                  Text(
+                    data['description'] ?? '',
+                    style: TextStyle(fontSize: 16, height: 1.6, color: Colors.grey[800]),
+                  ),
+                  const SizedBox(height: 40),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 60,
+                    child: ElevatedButton(
+                      onPressed: _isRegistering ? null : _registerForEvent,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF3F51B5),
+                        foregroundColor: Colors.white,
+                        elevation: 8,
+                        shadowColor: const Color(0xFF3F51B5).withOpacity(0.4),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                      ),
+                      child: _isRegistering
+                          ? const CircularProgressIndicator(color: Colors.white)
+                          : const Text('Register Now', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
