@@ -13,7 +13,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'firebase_options.dart';
 
-
 // Global Data Manager for reactivity and platform compatibility
 class AppData extends ChangeNotifier {
   String? _userName;
@@ -42,7 +41,12 @@ class AppData extends ChangeNotifier {
     notifyListeners();
   }
 
-  void updateUserData({String? dept, String? course, String? division, String? imageUrl}) {
+  void updateUserData({
+    String? dept,
+    String? course,
+    String? division,
+    String? imageUrl,
+  }) {
     if (dept != null) _userDept = dept;
     if (course != null) _userCourse = course;
     if (division != null) _userDivision = division;
@@ -54,7 +58,10 @@ class AppData extends ChangeNotifier {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
       try {
-        final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+        final doc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .get();
         if (doc.exists) {
           final data = doc.data()!;
           _userName = data['fullName'];
@@ -76,9 +83,7 @@ final AppData appData = AppData();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   runApp(const MyApp());
 }
 
@@ -151,7 +156,9 @@ class _AuthWrapperState extends State<AuthWrapper> {
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
         }
         if (snapshot.hasData) {
           Future.microtask(() => appData.loadUserData());
@@ -170,7 +177,8 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
   late Animation<double> _scaleAnimation;
@@ -183,9 +191,10 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       duration: const Duration(milliseconds: 1500),
     );
     _fadeAnimation = CurvedAnimation(parent: _controller, curve: Curves.easeIn);
-    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.elasticOut),
-    );
+    _scaleAnimation = Tween<double>(
+      begin: 0.8,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.elasticOut));
     _controller.forward();
   }
 
@@ -199,13 +208,20 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     HapticFeedback.mediumImpact();
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
-        pageBuilder: (context, animation, secondaryAnimation) => const LoginPage(),
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            const LoginPage(),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           const begin = Offset(1.0, 0.0);
           const end = Offset.zero;
           const curve = Curves.easeInOutQuart;
-          var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
-          return SlideTransition(position: animation.drive(tween), child: child);
+          var tween = Tween(
+            begin: begin,
+            end: end,
+          ).chain(CurveTween(curve: curve));
+          return SlideTransition(
+            position: animation.drive(tween),
+            child: child,
+          );
         },
         transitionDuration: const Duration(milliseconds: 800),
       ),
@@ -222,10 +238,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [
-                  Colors.white,
-                  Color(0xFFE8EAF6),
-                ],
+                colors: [Colors.white, Color(0xFFE8EAF6)],
               ),
             ),
           ),
@@ -291,7 +304,9 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                               shape: BoxShape.circle,
                               boxShadow: [
                                 BoxShadow(
-                                  color: const Color(0xFF3F51B5).withOpacity(0.3),
+                                  color: const Color(
+                                    0xFF3F51B5,
+                                  ).withOpacity(0.3),
                                   blurRadius: 15,
                                   offset: const Offset(0, 8),
                                 ),
@@ -330,10 +345,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     return Container(
       width: size,
       height: size,
-      decoration: BoxDecoration(
-        color: color,
-        shape: BoxShape.circle,
-      ),
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
     );
   }
 }
@@ -345,7 +357,8 @@ class LoginPage extends StatefulWidget {
   State<LoginPage> createState() => _LoginPageState();
 }
 
-class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMixin {
+class _LoginPageState extends State<LoginPage>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
   final TextEditingController _emailController = TextEditingController();
@@ -386,21 +399,24 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
     final password = _passwordController.text.trim();
 
     if (email.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter all fields')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please enter all fields')));
       return;
     }
 
     setState(() => _isLoading = true);
     try {
-      final userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
+      final userCredential = await FirebaseAuth.instance
+          .signInWithEmailAndPassword(email: email, password: password);
 
       final user = userCredential.user;
       if (user != null) {
         // Fetch user role from Firestore
-        final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+        final userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .get();
         final userData = userDoc.data() ?? {};
         final role = userData['role'] as String?;
 
@@ -415,13 +431,19 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
             // Not an admin
             await FirebaseAuth.instance.signOut();
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Access Denied: You do not have admin privileges.')));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Access Denied: You do not have admin privileges.',
+                  ),
+                ),
+              );
             }
           }
         } else {
           // User Mode
           if (mounted) {
-             Navigator.of(context).pushReplacement(
+            Navigator.of(context).pushReplacement(
               MaterialPageRoute(builder: (context) => const AuthWrapper()),
             );
           }
@@ -429,12 +451,16 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
       }
     } on FirebaseAuthException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message ?? 'Login failed')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.message ?? 'Login failed')));
       }
     } catch (e, stacktrace) {
       debugPrint('Login generic error: $e\n$stacktrace');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('An unexpected error occurred: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('An unexpected error occurred: $e')),
+        );
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -459,7 +485,10 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
             child: FadeTransition(
               opacity: _fadeAnimation,
               child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 50),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 30,
+                  vertical: 50,
+                ),
                 child: Column(
                   children: [
                     Container(
@@ -486,21 +515,51 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                           decoration: BoxDecoration(
                             color: Colors.white.withOpacity(0.15),
                             borderRadius: BorderRadius.circular(30),
-                            border: Border.all(color: Colors.white.withOpacity(0.2), width: 1.5),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.2),
+                              width: 1.5,
+                            ),
                           ),
                           child: Column(
                             children: [
                               Container(
                                 padding: const EdgeInsets.all(8),
-                                decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                                child: ClipOval(child: Image.asset('android/app/src/logo.png', width: 70, height: 70, fit: BoxFit.cover)),
+                                decoration: const BoxDecoration(
+                                  color: Colors.white,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: ClipOval(
+                                  child: Image.asset(
+                                    'android/app/src/logo.png',
+                                    width: 70,
+                                    height: 70,
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
                               ),
                               const SizedBox(height: 20),
-                              Text(_isAdminMode ? 'Admin Portal' : 'Campus Sync', style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
+                              Text(
+                                _isAdminMode ? 'Admin Portal' : 'Campus Sync',
+                                style: const TextStyle(
+                                  fontSize: 28,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
                               const SizedBox(height: 30),
-                              _buildTextField(_isAdminMode ? Icons.badge_outlined : Icons.alternate_email, _isAdminMode ? 'Admin ID' : 'Email Address', _emailController),
+                              _buildTextField(
+                                _isAdminMode
+                                    ? Icons.badge_outlined
+                                    : Icons.alternate_email,
+                                _isAdminMode ? 'Admin ID' : 'Email Address',
+                                _emailController,
+                              ),
                               const SizedBox(height: 20),
-                              _buildPasswordField(Icons.lock_person_outlined, 'Password', _passwordController),
+                              _buildPasswordField(
+                                Icons.lock_person_outlined,
+                                'Password',
+                                _passwordController,
+                              ),
                               const SizedBox(height: 35),
                               SizedBox(
                                 width: double.infinity,
@@ -509,10 +568,28 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: Colors.white,
                                     foregroundColor: const Color(0xFF3F51B5),
-                                    padding: const EdgeInsets.symmetric(vertical: 18),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 18,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(15),
+                                    ),
                                   ),
-                                  child: _isLoading ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Login', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                                  child: _isLoading
+                                      ? const SizedBox(
+                                          height: 20,
+                                          width: 20,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      : const Text(
+                                          'Login',
+                                          style: TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
                                 ),
                               ),
                               const SizedBox(height: 25),
@@ -521,9 +598,18 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                                 maintainSize: true,
                                 maintainAnimation: true,
                                 maintainState: true,
-                                child: _buildSwitchAuth('New here?', 'Create Account', () {
-                                  Navigator.of(context).push(MaterialPageRoute(builder: (context) => const RegisterPage()));
-                                }),
+                                child: _buildSwitchAuth(
+                                  'New here?',
+                                  'Create Account',
+                                  () {
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (context) =>
+                                            const RegisterPage(),
+                                      ),
+                                    );
+                                  },
+                                ),
                               ),
                             ],
                           ),
@@ -545,15 +631,31 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
       onTap: () => _toggleMode(label == 'Admin'),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 10),
-        decoration: BoxDecoration(color: isSelected ? Colors.white : Colors.transparent, borderRadius: BorderRadius.circular(18)),
-        child: Text(label, style: TextStyle(color: isSelected ? const Color(0xFF3F51B5) : Colors.white, fontWeight: FontWeight.bold)),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.white : Colors.transparent,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? const Color(0xFF3F51B5) : Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
       ),
     );
   }
 
-  Widget _buildTextField(IconData icon, String hint, TextEditingController controller) {
+  Widget _buildTextField(
+    IconData icon,
+    String hint,
+    TextEditingController controller,
+  ) {
     return Container(
-      decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), borderRadius: BorderRadius.circular(15)),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(15),
+      ),
       child: TextField(
         controller: controller,
         style: const TextStyle(color: Colors.white),
@@ -562,15 +664,25 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
           hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
           prefixIcon: Icon(icon, color: Colors.white.withOpacity(0.7)),
           border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 18,
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildPasswordField(IconData icon, String hint, TextEditingController controller) {
+  Widget _buildPasswordField(
+    IconData icon,
+    String hint,
+    TextEditingController controller,
+  ) {
     return Container(
-      decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), borderRadius: BorderRadius.circular(15)),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(15),
+      ),
       child: TextField(
         controller: controller,
         obscureText: _obscurePassword,
@@ -580,11 +692,18 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
           hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
           prefixIcon: Icon(icon, color: Colors.white.withOpacity(0.7)),
           suffixIcon: IconButton(
-            icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility, color: Colors.white.withOpacity(0.7)),
-            onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+            icon: Icon(
+              _obscurePassword ? Icons.visibility_off : Icons.visibility,
+              color: Colors.white.withOpacity(0.7),
+            ),
+            onPressed: () =>
+                setState(() => _obscurePassword = !_obscurePassword),
           ),
           border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 18,
+          ),
         ),
       ),
     );
@@ -595,12 +714,26 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-        decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(20),
+        ),
         child: RichText(
           text: TextSpan(
             text: "$text ",
-            style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 14),
-            children: [TextSpan(text: action, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))],
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.9),
+              fontSize: 14,
+            ),
+            children: [
+              TextSpan(
+                text: action,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -615,13 +748,15 @@ class RegisterPage extends StatefulWidget {
   State<RegisterPage> createState() => _RegisterPageState();
 }
 
-class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderStateMixin {
+class _RegisterPageState extends State<RegisterPage>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  final TextEditingController _confirmPasswordController = TextEditingController();
+  final TextEditingController _confirmPasswordController =
+      TextEditingController();
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   bool _isLoading = false;
@@ -629,7 +764,10 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 1000));
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    );
     _fadeAnimation = CurvedAnimation(parent: _controller, curve: Curves.easeIn);
     _controller.forward();
   }
@@ -644,7 +782,8 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
     super.dispose();
   }
 
-  bool _isValidEmail(String email) => RegExp(r'^[a-zA-Z0-9.]+@[a-zA-Z0-9]+\.[a-zA-Z]+').hasMatch(email);
+  bool _isValidEmail(String email) =>
+      RegExp(r'^[a-zA-Z0-9.]+@[a-zA-Z0-9]+\.[a-zA-Z]+').hasMatch(email);
 
   Future<void> _handleRegister() async {
     final name = _nameController.text.trim();
@@ -653,32 +792,46 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
     final confirm = _confirmPasswordController.text.trim();
 
     if (name.isEmpty || email.isEmpty || password.isEmpty || confirm.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter all fields')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please enter all fields')));
       return;
     }
     if (!_isValidEmail(email)) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invalid email format')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Invalid email format')));
       return;
     }
     if (password != confirm) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Passwords do not match')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Passwords do not match')));
       return;
     }
 
     setState(() => _isLoading = true);
     try {
-      final cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(email: email, password: password);
+      final cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
       if (cred.user != null) {
         // Save Name and Email directly to Firestore
-        await FirebaseFirestore.instance.collection('users').doc(cred.user!.uid).set({
-          'fullName': name,
-          'email': email,
-          'createdAt': FieldValue.serverTimestamp(),
-        });
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(cred.user!.uid)
+            .set({
+              'fullName': name,
+              'email': email,
+              'createdAt': FieldValue.serverTimestamp(),
+            });
 
         // Successful registration. Navigate to LoginPage.
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Account created successfully!')));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Account created successfully!')),
+          );
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (context) => const LoginPage()),
           );
@@ -686,12 +839,16 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
       }
     } on FirebaseAuthException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message ?? 'Registration failed')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message ?? 'Registration failed')),
+        );
       }
     } catch (e, stacktrace) {
       debugPrint('Register generic error: $e\n$stacktrace');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('An unexpected error occurred: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('An unexpected error occurred: $e')),
+        );
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -703,7 +860,13 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
     return Scaffold(
       body: Stack(
         children: [
-          Container(decoration: const BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF212121), Color(0xFF3F51B5)]))),
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Color(0xFF212121), Color(0xFF3F51B5)],
+              ),
+            ),
+          ),
           Center(
             child: FadeTransition(
               opacity: _fadeAnimation,
@@ -715,31 +878,99 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
                     filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
                     child: Container(
                       padding: const EdgeInsets.all(30),
-                      decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), borderRadius: BorderRadius.circular(30)),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(30),
+                      ),
                       child: Column(
                         children: [
                           Container(
                             padding: const EdgeInsets.all(8),
-                            decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                            child: ClipOval(child: Image.asset('android/app/src/logo.png', width: 70, height: 70, fit: BoxFit.cover)),
+                            decoration: const BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                            ),
+                            child: ClipOval(
+                              child: Image.asset(
+                                'android/app/src/logo.png',
+                                width: 70,
+                                height: 70,
+                                fit: BoxFit.cover,
+                              ),
+                            ),
                           ),
                           const SizedBox(height: 20),
-                          const Text('Create Account', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
+                          const Text(
+                            'Create Account',
+                            style: TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
                           const SizedBox(height: 30),
-                          _buildTextField(Icons.person_outline, 'Full Name', _nameController),
+                          _buildTextField(
+                            Icons.person_outline,
+                            'Full Name',
+                            _nameController,
+                          ),
                           const SizedBox(height: 15),
-                          _buildTextField(Icons.alternate_email, 'Email Address', _emailController),
+                          _buildTextField(
+                            Icons.alternate_email,
+                            'Email Address',
+                            _emailController,
+                          ),
                           const SizedBox(height: 15),
-                          _buildPasswordField(Icons.lock_person_outlined, 'Password', _passwordController, _obscurePassword, () => setState(() => _obscurePassword = !_obscurePassword)),
+                          _buildPasswordField(
+                            Icons.lock_person_outlined,
+                            'Password',
+                            _passwordController,
+                            _obscurePassword,
+                            () => setState(
+                              () => _obscurePassword = !_obscurePassword,
+                            ),
+                          ),
                           const SizedBox(height: 15),
-                          _buildPasswordField(Icons.lock_reset_outlined, 'Confirm Password', _confirmPasswordController, _obscureConfirmPassword, () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword)),
+                          _buildPasswordField(
+                            Icons.lock_reset_outlined,
+                            'Confirm Password',
+                            _confirmPasswordController,
+                            _obscureConfirmPassword,
+                            () => setState(
+                              () => _obscureConfirmPassword =
+                                  !_obscureConfirmPassword,
+                            ),
+                          ),
                           const SizedBox(height: 30),
                           SizedBox(
                             width: double.infinity,
                             child: ElevatedButton(
                               onPressed: _isLoading ? null : _handleRegister,
-                              style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: const Color(0xFF3F51B5), padding: const EdgeInsets.symmetric(vertical: 18), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
-                              child: _isLoading ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Register', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.white,
+                                foregroundColor: const Color(0xFF3F51B5),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 18,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(15),
+                                ),
+                              ),
+                              child: _isLoading
+                                  ? const SizedBox(
+                                      height: 20,
+                                      width: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Text(
+                                      'Register',
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
                             ),
                           ),
                         ],
@@ -755,20 +986,45 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
     );
   }
 
-  Widget _buildTextField(IconData icon, String hint, TextEditingController controller) {
+  Widget _buildTextField(
+    IconData icon,
+    String hint,
+    TextEditingController controller,
+  ) {
     return Container(
-      decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), borderRadius: BorderRadius.circular(15)),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(15),
+      ),
       child: TextField(
         controller: controller,
         style: const TextStyle(color: Colors.white),
-        decoration: InputDecoration(hintText: hint, hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)), prefixIcon: Icon(icon, color: Colors.white.withOpacity(0.7)), border: InputBorder.none, contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18)),
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+          prefixIcon: Icon(icon, color: Colors.white.withOpacity(0.7)),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 18,
+          ),
+        ),
       ),
     );
   }
 
-  Widget _buildPasswordField(IconData icon, String hint, TextEditingController controller, bool isObscure, VoidCallback toggleObscure) {
+  Widget _buildPasswordField(
+    IconData icon,
+    String hint,
+    TextEditingController controller,
+    bool isObscure,
+    VoidCallback toggleObscure,
+  ) {
     return Container(
-      decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), borderRadius: BorderRadius.circular(15)),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(15),
+      ),
       child: TextField(
         controller: controller,
         obscureText: isObscure,
@@ -778,11 +1034,17 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
           hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
           prefixIcon: Icon(icon, color: Colors.white.withOpacity(0.7)),
           suffixIcon: IconButton(
-            icon: Icon(isObscure ? Icons.visibility_off : Icons.visibility, color: Colors.white.withOpacity(0.7)),
+            icon: Icon(
+              isObscure ? Icons.visibility_off : Icons.visibility,
+              color: Colors.white.withOpacity(0.7),
+            ),
             onPressed: toggleObscure,
           ),
           border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 18,
+          ),
         ),
       ),
     );
@@ -798,10 +1060,15 @@ class AdminDashboard extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Admin Dashboard'),
         actions: [
-          IconButton(icon: const Icon(Icons.logout), onPressed: () async {
-            await FirebaseAuth.instance.signOut();
-            Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (context) => const LoginPage()));
-          }),
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () async {
+              await FirebaseAuth.instance.signOut();
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (context) => const LoginPage()),
+              );
+            },
+          ),
         ],
       ),
       body: StreamBuilder<QuerySnapshot>(
@@ -815,12 +1082,27 @@ class AdminDashboard extends StatelessWidget {
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(25),
-                  decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFF3F51B5), Color(0xFF03A9F4)]), borderRadius: BorderRadius.circular(20)),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF3F51B5), Color(0xFF03A9F4)],
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
                   child: Column(
                     children: [
                       const Icon(Icons.people, color: Colors.white, size: 40),
-                      Text('$count', style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Colors.white)),
-                      const Text('Total Users', style: TextStyle(color: Colors.white70)),
+                      Text(
+                        '$count',
+                        style: const TextStyle(
+                          fontSize: 36,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const Text(
+                        'Total Users',
+                        style: TextStyle(color: Colors.white70),
+                      ),
                     ],
                   ),
                 ),
@@ -828,17 +1110,32 @@ class AdminDashboard extends StatelessWidget {
                 ListTile(
                   leading: const Icon(Icons.manage_accounts, color: Colors.red),
                   title: const Text('Manage Users'),
-                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (context) => const ManageUsersPage())),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const ManageUsersPage(),
+                    ),
+                  ),
                 ),
                 ListTile(
                   leading: const Icon(Icons.event, color: Colors.green),
                   title: const Text('Add New Event'),
-                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (context) => const AddEventPage())),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const AddEventPage(),
+                    ),
+                  ),
                 ),
                 ListTile(
-                  leading: const Icon(Icons.edit_calendar_rounded, color: Colors.orange),
+                  leading: const Icon(
+                    Icons.edit_calendar_rounded,
+                    color: Colors.orange,
+                  ),
                   title: const Text('Manage Events'),
-                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (context) => const ManageEventsPage())),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const ManageEventsPage(),
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -859,7 +1156,8 @@ class ManageUsersPage extends StatelessWidget {
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance.collection('users').snapshots(),
         builder: (context, snapshot) {
-          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+          if (!snapshot.hasData)
+            return const Center(child: CircularProgressIndicator());
           final users = snapshot.data!.docs;
           return ListView.builder(
             itemCount: users.length,
@@ -868,9 +1166,15 @@ class ManageUsersPage extends StatelessWidget {
               return ListTile(
                 title: Text(data['fullName'] ?? 'Anonymous'),
                 subtitle: Text(data['email'] ?? ''),
-                trailing: IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () async {
-                  await FirebaseFirestore.instance.collection('users').doc(users[i].id).delete();
-                }),
+                trailing: IconButton(
+                  icon: const Icon(Icons.delete, color: Colors.red),
+                  onPressed: () async {
+                    await FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(users[i].id)
+                        .delete();
+                  },
+                ),
               );
             },
           );
@@ -890,9 +1194,11 @@ class ManageEventsPage extends StatelessWidget {
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance.collection('events').snapshots(),
         builder: (context, snapshot) {
-          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+          if (!snapshot.hasData)
+            return const Center(child: CircularProgressIndicator());
           final events = snapshot.data!.docs;
-          if (events.isEmpty) return const Center(child: Text('No events published yet.'));
+          if (events.isEmpty)
+            return const Center(child: Text('No events published yet.'));
 
           return ListView.builder(
             padding: const EdgeInsets.all(16),
@@ -906,41 +1212,73 @@ class ManageEventsPage extends StatelessWidget {
 
               return Card(
                 margin: const EdgeInsets.only(bottom: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(15),
+                ),
                 elevation: 3,
                 child: Column(
                   children: [
                     if (imageUrl != null)
                       ClipRRect(
-                        borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
-                        child: Image.network(imageUrl, height: 150, width: double.infinity, fit: BoxFit.cover),
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(15),
+                        ),
+                        child: Image.network(
+                          imageUrl,
+                          height: 150,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                        ),
                       ),
                     ListTile(
-                      title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+                      title: Text(
+                        title,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
                       subtitle: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(data['isPaid'] == true ? 'Price: ₹${data['price']}' : 'Free Event'),
+                          Text(
+                            data['isPaid'] == true
+                                ? 'Price: ₹${data['price']}'
+                                : 'Free Event',
+                          ),
                           const SizedBox(height: 8),
                           StreamBuilder<QuerySnapshot>(
-                            stream: FirebaseFirestore.instance.collection('events').doc(eventId).collection('registrations').snapshots(),
+                            stream: FirebaseFirestore.instance
+                                .collection('events')
+                                .doc(eventId)
+                                .collection('registrations')
+                                .snapshots(),
                             builder: (context, regSnap) {
-                              final count = regSnap.hasData ? regSnap.data!.docs.length : 0;
+                              final count = regSnap.hasData
+                                  ? regSnap.data!.docs.length
+                                  : 0;
                               return Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   LinearProgressIndicator(
                                     value: count / maxReg,
                                     backgroundColor: Colors.grey[200],
-                                    valueColor: AlwaysStoppedAnimation<Color>(count >= maxReg ? Colors.red : Colors.green),
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      count >= maxReg
+                                          ? Colors.red
+                                          : Colors.green,
+                                    ),
                                     minHeight: 8,
                                     borderRadius: BorderRadius.circular(10),
                                   ),
                                   const SizedBox(height: 4),
-                                  Text('$count / $maxReg slots filled', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+                                  Text(
+                                    '$count / $maxReg slots filled',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
                                 ],
                               );
-                            }
+                            },
                           ),
                         ],
                       ),
@@ -948,11 +1286,25 @@ class ManageEventsPage extends StatelessWidget {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           IconButton(
-                            icon: const Icon(Icons.people_outline, color: Colors.blue),
-                            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => ViewParticipantsPage(eventId: eventId, eventTitle: title))),
+                            icon: const Icon(
+                              Icons.people_outline,
+                              color: Colors.blue,
+                            ),
+                            onPressed: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => ViewParticipantsPage(
+                                  eventId: eventId,
+                                  eventTitle: title,
+                                ),
+                              ),
+                            ),
                           ),
                           IconButton(
-                            icon: const Icon(Icons.delete_outline, color: Colors.red),
+                            icon: const Icon(
+                              Icons.delete_outline,
+                              color: Colors.red,
+                            ),
                             onPressed: () => _confirmDelete(context, eventId),
                           ),
                         ],
@@ -973,12 +1325,20 @@ class ManageEventsPage extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete Event?'),
-        content: const Text('Are you sure you want to delete this event? This action cannot be undone.'),
+        content: const Text(
+          'Are you sure you want to delete this event? This action cannot be undone.',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
           TextButton(
             onPressed: () async {
-              await FirebaseFirestore.instance.collection('events').doc(eventId).delete();
+              await FirebaseFirestore.instance
+                  .collection('events')
+                  .doc(eventId)
+                  .delete();
               if (context.mounted) Navigator.pop(context);
             },
             child: const Text('Delete', style: TextStyle(color: Colors.red)),
@@ -992,18 +1352,28 @@ class ManageEventsPage extends StatelessWidget {
 class ViewParticipantsPage extends StatelessWidget {
   final String eventId;
   final String eventTitle;
-  const ViewParticipantsPage({super.key, required this.eventId, required this.eventTitle});
+  const ViewParticipantsPage({
+    super.key,
+    required this.eventId,
+    required this.eventTitle,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text('Participants: $eventTitle')),
       body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance.collection('events').doc(eventId).collection('registrations').snapshots(),
+        stream: FirebaseFirestore.instance
+            .collection('events')
+            .doc(eventId)
+            .collection('registrations')
+            .snapshots(),
         builder: (context, snapshot) {
-          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+          if (!snapshot.hasData)
+            return const Center(child: CircularProgressIndicator());
           final registrations = snapshot.data!.docs;
-          if (registrations.isEmpty) return const Center(child: Text('No participants registered yet.'));
+          if (registrations.isEmpty)
+            return const Center(child: Text('No participants registered yet.'));
 
           return ListView.builder(
             itemCount: registrations.length,
@@ -1013,9 +1383,14 @@ class ViewParticipantsPage extends StatelessWidget {
                 leading: CircleAvatar(child: Text('${i + 1}')),
                 title: Text(regData['userName'] ?? 'Unknown User'),
                 subtitle: Text(regData['userEmail'] ?? 'No Email'),
-                trailing: Text(regData['registeredAt'] != null 
-                  ? (regData['registeredAt'] as Timestamp).toDate().toString().split(' ')[0] 
-                  : ''),
+                trailing: Text(
+                  regData['registeredAt'] != null
+                      ? (regData['registeredAt'] as Timestamp)
+                            .toDate()
+                            .toString()
+                            .split(' ')[0]
+                      : '',
+                ),
               );
             },
           );
@@ -1035,8 +1410,11 @@ class AddEventPage extends StatefulWidget {
 class _AddEventPageState extends State<AddEventPage> {
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
+  final _venueController = TextEditingController();
   final _priceController = TextEditingController();
   final _maxRegController = TextEditingController(text: '100');
+  final TextEditingController _dateController = TextEditingController();
+  TimeOfDay? _selectedTime;
   bool _isPaid = false;
   Uint8List? _coverImageBytes;
   bool _isLoading = false;
@@ -1044,7 +1422,12 @@ class _AddEventPageState extends State<AddEventPage> {
   Future<void> _pickCoverImage() async {
     try {
       final picker = ImagePicker();
-      final picked = await picker.pickImage(source: ImageSource.gallery, maxWidth: 1024, maxHeight: 1024, imageQuality: 85);
+      final picked = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 85,
+      );
       if (picked != null) {
         final bytes = await picked.readAsBytes();
         setState(() => _coverImageBytes = bytes);
@@ -1057,16 +1440,29 @@ class _AddEventPageState extends State<AddEventPage> {
   Future<void> _publishEvent() async {
     final title = _titleController.text.trim();
     final description = _descriptionController.text.trim();
+    final venue = _venueController.text.trim();
     final priceStr = _priceController.text.trim();
     final maxRegStr = _maxRegController.text.trim();
 
-    if (title.isEmpty || description.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill title and description')));
+    if (title.isEmpty ||
+        description.isEmpty ||
+        venue.isEmpty ||
+        _dateController.text.trim().isEmpty ||
+        _selectedTime == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Please fill all required fields: title, description, venue, date & time',
+          ),
+        ),
+      );
       return;
     }
 
     if (_isPaid && priceStr.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter price in INR')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter price in INR')),
+      );
       return;
     }
 
@@ -1074,14 +1470,24 @@ class _AddEventPageState extends State<AddEventPage> {
     try {
       String? imageUrl;
       if (_coverImageBytes != null) {
-        final ref = FirebaseStorage.instance.ref().child('event_covers/${DateTime.now().millisecondsSinceEpoch}.jpg');
-        await ref.putData(_coverImageBytes!, SettableMetadata(contentType: 'image/jpeg'));
+        final ref = FirebaseStorage.instance.ref().child(
+          'event_covers/${DateTime.now().millisecondsSinceEpoch}.jpg',
+        );
+        await ref.putData(
+          _coverImageBytes!,
+          SettableMetadata(contentType: 'image/jpeg'),
+        );
         imageUrl = await ref.getDownloadURL();
       }
 
       await FirebaseFirestore.instance.collection('events').add({
         'title': title,
         'description': description,
+        'venue': venue,
+        'eventDate': _parseDate(
+          _dateController.text.trim(),
+        )!.millisecondsSinceEpoch,
+        'eventTime': _selectedTime!.format(context),
         'isPaid': _isPaid,
         'price': _isPaid ? double.tryParse(priceStr) ?? 0.0 : 0.0,
         'maxRegistrations': int.tryParse(maxRegStr) ?? 100,
@@ -1090,11 +1496,16 @@ class _AddEventPageState extends State<AddEventPage> {
       });
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Event published successfully!')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Event published successfully!')),
+        );
         Navigator.pop(context);
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -1104,94 +1515,262 @@ class _AddEventPageState extends State<AddEventPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Add Event')),
-      body: _isLoading 
-        ? const Center(child: CircularProgressIndicator())
-        : SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildSectionTitle('Event Basics'),
-                const SizedBox(height: 16),
-                _buildTextField('Event Name', _titleController, Icons.title_rounded),
-                const SizedBox(height: 16),
-                _buildTextField('Description', _descriptionController, Icons.description_rounded, maxLines: 4),
-                const SizedBox(height: 16),
-                _buildTextField('Max Registrations', _maxRegController, Icons.people_alt_rounded, keyboardType: TextInputType.number),
-                
-                const SizedBox(height: 32),
-                _buildSectionTitle('Pricing Details'),
-                const SizedBox(height: 8),
-                SwitchListTile(
-                  title: const Text('Is this a paid event?', style: TextStyle(fontWeight: FontWeight.w500)),
-                  subtitle: Text(_isPaid ? 'Participants will be charged' : 'Free for all users'),
-                  value: _isPaid,
-                  onChanged: (val) => setState(() => _isPaid = val),
-                  activeColor: const Color(0xFF3F51B5),
-                  contentPadding: EdgeInsets.zero,
-                ),
-                if (_isPaid) ...[
-                  const SizedBox(height: 8),
-                  _buildTextField('Price (INR)', _priceController, Icons.currency_rupee_rounded, keyboardType: TextInputType.number),
-                ],
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildSectionTitle('Event Basics'),
+                  const SizedBox(height: 16),
+                  _buildTextField(
+                    'Event Name',
+                    _titleController,
+                    Icons.title_rounded,
+                  ),
+                  const SizedBox(height: 16),
+                  _buildTextField(
+                    'Description',
+                    _descriptionController,
+                    Icons.description_rounded,
+                    maxLines: 4,
+                  ),
+                  const SizedBox(height: 16),
+                  _buildTextField(
+                    'Max Registrations',
+                    _maxRegController,
+                    Icons.people_alt_rounded,
+                    keyboardType: TextInputType.number,
+                  ),
+                  const SizedBox(height: 16),
+                  _buildVenueField(),
+                  const SizedBox(height: 16),
+                  _buildDateField(),
+                  const SizedBox(height: 16),
+                  _buildTimeField(),
 
-                const SizedBox(height: 32),
-                _buildSectionTitle('Event Cover'),
-                const SizedBox(height: 16),
-                GestureDetector(
-                  onTap: _pickCoverImage,
-                  child: Container(
+                  const SizedBox(height: 32),
+                  _buildSectionTitle('Pricing Details'),
+                  const SizedBox(height: 8),
+                  SwitchListTile(
+                    title: const Text(
+                      'Is this a paid event?',
+                      style: TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                    subtitle: Text(
+                      _isPaid
+                          ? 'Participants will be charged'
+                          : 'Free for all users',
+                    ),
+                    value: _isPaid,
+                    onChanged: (val) => setState(() => _isPaid = val),
+                    activeColor: const Color(0xFF3F51B5),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  if (_isPaid) ...[
+                    const SizedBox(height: 8),
+                    _buildTextField(
+                      'Price (INR)',
+                      _priceController,
+                      Icons.currency_rupee_rounded,
+                      keyboardType: TextInputType.number,
+                    ),
+                  ],
+
+                  const SizedBox(height: 32),
+                  _buildSectionTitle('Event Cover'),
+                  const SizedBox(height: 16),
+                  GestureDetector(
+                    onTap: _pickCoverImage,
+                    child: Container(
+                      width: double.infinity,
+                      height: 200,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[100],
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: Colors.grey[300]!,
+                          width: 2,
+                          style: BorderStyle.solid,
+                        ),
+                      ),
+                      child: _coverImageBytes != null
+                          ? ClipRRect(
+                              borderRadius: BorderRadius.circular(18),
+                              child: Image.memory(
+                                _coverImageBytes!,
+                                fit: BoxFit.cover,
+                              ),
+                            )
+                          : Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.add_photo_alternate_rounded,
+                                  size: 48,
+                                  color: Colors.grey[400],
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Tap to select cover image',
+                                  style: TextStyle(color: Colors.grey[600]),
+                                ),
+                              ],
+                            ),
+                    ),
+                  ),
+                  const SizedBox(height: 40),
+                  SizedBox(
                     width: double.infinity,
-                    height: 200,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[100],
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.grey[300]!, width: 2, style: BorderStyle.solid),
+                    child: ElevatedButton(
+                      onPressed: _publishEvent,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF3F51B5),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 18),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                        elevation: 4,
+                      ),
+                      child: const Text(
+                        'Publish Event',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
-                    child: _coverImageBytes != null
-                        ? ClipRRect(
-                            borderRadius: BorderRadius.circular(18),
-                            child: Image.memory(_coverImageBytes!, fit: BoxFit.cover),
-                          )
-                        : Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.add_photo_alternate_rounded, size: 48, color: Colors.grey[400]),
-                              const SizedBox(height: 8),
-                              Text('Tap to select cover image', style: TextStyle(color: Colors.grey[600])),
-                            ],
-                          ),
                   ),
-                ),
-                const SizedBox(height: 40),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _publishEvent,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF3F51B5),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 18),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                      elevation: 4,
-                    ),
-                    child: const Text('Publish Event', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
     );
   }
 
   Widget _buildSectionTitle(String title) {
     return Text(
       title,
-      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF3F51B5), letterSpacing: 1.2),
+      style: const TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.bold,
+        color: Color(0xFF3F51B5),
+        letterSpacing: 1.2,
+      ),
     );
   }
 
-  Widget _buildTextField(String label, TextEditingController controller, IconData icon, {int maxLines = 1, TextInputType keyboardType = TextInputType.text}) {
+  Widget _buildVenueField() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: Colors.grey[200]!),
+      ),
+      child: TextField(
+        controller: _venueController,
+        decoration: InputDecoration(
+          labelText: 'Venue',
+          prefixIcon: Icon(
+            Icons.location_on_outlined,
+            color: const Color(0xFF3F51B5),
+          ),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 16,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDateField() {
+    return _buildTextField(
+      'Event Date (DD/MM/YYYY)',
+      _dateController,
+      Icons.calendar_today,
+      keyboardType: const TextInputType.numberWithOptions(
+        signed: true,
+        decimal: true,
+      ),
+    );
+  }
+
+  Widget _buildTimeField() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: Colors.grey[200]!),
+      ),
+      child: ListTile(
+        dense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        title: const Text(
+          'Event Time',
+          style: TextStyle(fontWeight: FontWeight.w500),
+        ),
+        subtitle: Text(
+          _selectedTime == null
+              ? 'Select time'
+              : _selectedTime!.format(context),
+        ),
+        trailing: const Icon(Icons.access_time, color: Color(0xFF3F51B5)),
+        onTap: _pickTime,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      ),
+    );
+  }
+
+  DateTime? _parseDate(String input) {
+    if (input.trim().isEmpty) return null;
+
+    try {
+      final parts = input.trim().split('/');
+      if (parts.length != 3) return null;
+
+      final day = int.tryParse(parts[0]);
+      final month = int.tryParse(parts[1]);
+      final year = int.tryParse(parts[2]);
+
+      if (day == null || month == null || year == null) return null;
+      if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+
+      final date = DateTime(year, month, day);
+      if (date.isBefore(DateTime.now())) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Date must be today or in the future')),
+        );
+        return null;
+      }
+      return date;
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Invalid date format. Use DD/MM/YYYY')),
+      );
+      return null;
+    }
+  }
+
+  Future<void> _pickTime() async {
+    final time = await showTimePicker(
+      context: context,
+      initialTime: _selectedTime ?? TimeOfDay.now(),
+    );
+    if (time != null) {
+      setState(() => _selectedTime = time);
+    }
+  }
+
+  Widget _buildTextField(
+    String label,
+    TextEditingController controller,
+    IconData icon, {
+    int maxLines = 1,
+    TextInputType? keyboardType,
+  }) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.grey[50],
@@ -1201,12 +1780,15 @@ class _AddEventPageState extends State<AddEventPage> {
       child: TextField(
         controller: controller,
         maxLines: maxLines,
-        keyboardType: keyboardType,
+        keyboardType: keyboardType ?? TextInputType.text,
         decoration: InputDecoration(
           labelText: label,
           prefixIcon: Icon(icon, color: const Color(0xFF3F51B5)),
           border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 16,
+          ),
         ),
       ),
     );
@@ -1222,7 +1804,11 @@ class MainNavigationHolder extends StatefulWidget {
 
 class _MainNavigationHolderState extends State<MainNavigationHolder> {
   int _selectedIndex = 0;
-  final _pages = [const HomePage(), const YourEventsPage(), const ProfilePage()];
+  final _pages = [
+    const HomePage(),
+    const YourEventsPage(),
+    const ProfilePage(),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -1239,18 +1825,27 @@ class _MainNavigationHolderState extends State<MainNavigationHolder> {
           ListenableBuilder(
             listenable: appData,
             builder: (context, _) {
-              final hasImage = appData.profileImageUrl != null && appData.profileImageUrl!.isNotEmpty;
+              final hasImage =
+                  appData.profileImageUrl != null &&
+                  appData.profileImageUrl!.isNotEmpty;
               return GestureDetector(
-                onTap: () => setState(() => _selectedIndex = 2), // Switch to Profile tab
+                onTap: () =>
+                    setState(() => _selectedIndex = 2), // Switch to Profile tab
                 child: Container(
                   margin: const EdgeInsets.only(right: 16),
                   width: 36,
                   height: 36,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    border: Border.all(color: const Color(0xFF3F51B5), width: 1.5),
+                    border: Border.all(
+                      color: const Color(0xFF3F51B5),
+                      width: 1.5,
+                    ),
                     image: hasImage
-                        ? DecorationImage(image: NetworkImage(appData.profileImageUrl!), fit: BoxFit.cover)
+                        ? DecorationImage(
+                            image: NetworkImage(appData.profileImageUrl!),
+                            fit: BoxFit.cover,
+                          )
                         : null,
                     color: hasImage ? null : Colors.grey[200],
                   ),
@@ -1258,8 +1853,14 @@ class _MainNavigationHolderState extends State<MainNavigationHolder> {
                       ? null
                       : Center(
                           child: Text(
-                            (appData.userName != null && appData.userName!.isNotEmpty) ? appData.userName![0].toUpperCase() : '?',
-                            style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF3F51B5)),
+                            (appData.userName != null &&
+                                    appData.userName!.isNotEmpty)
+                                ? appData.userName![0].toUpperCase()
+                                : '?',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF3F51B5),
+                            ),
                           ),
                         ),
                 ),
@@ -1295,10 +1896,19 @@ class HomePage extends StatelessWidget {
           builder: (context, _) {
             final firstName = (appData.userName ?? 'User').split(' ').first;
             return Padding(
-              padding: const EdgeInsets.only(left: 20, right: 20, top: 20, bottom: 10),
+              padding: const EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 20,
+                bottom: 10,
+              ),
               child: Text(
                 'Hello $firstName and welcome back! 👋',
-                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF3F51B5)),
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF3F51B5),
+                ),
               ),
             );
           },
@@ -1307,12 +1917,17 @@ class HomePage extends StatelessWidget {
           child: StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance.collection('events').snapshots(),
             builder: (context, snapshot) {
-              if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+              if (!snapshot.hasData)
+                return const Center(child: CircularProgressIndicator());
               final events = snapshot.data!.docs;
-              if (events.isEmpty) return const Center(child: Text('No events published yet.'));
+              if (events.isEmpty)
+                return const Center(child: Text('No events published yet.'));
 
               return ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 10,
+                ),
                 itemCount: events.length,
                 itemBuilder: (context, i) {
                   final eventId = events[i].id;
@@ -1324,15 +1939,30 @@ class HomePage extends StatelessWidget {
                   return Card(
                     margin: const EdgeInsets.only(bottom: 16),
                     clipBehavior: Clip.antiAlias,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
                     elevation: 4,
                     child: InkWell(
-                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => EventDetailsPage(eventId: eventId, eventData: data))),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => EventDetailsPage(
+                            eventId: eventId,
+                            eventData: data,
+                          ),
+                        ),
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           if (imageUrl != null)
-                            Image.network(imageUrl, height: 160, width: double.infinity, fit: BoxFit.cover),
+                            Image.network(
+                              imageUrl,
+                              height: 160,
+                              width: double.infinity,
+                              fit: BoxFit.cover,
+                            ),
                           Padding(
                             padding: const EdgeInsets.all(16),
                             child: Column(
@@ -1341,20 +1971,84 @@ class HomePage extends StatelessWidget {
                                   children: [
                                     Expanded(
                                       child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
-                                          Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                                          Text(
+                                            title,
+                                            style: const TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
                                           const SizedBox(height: 4),
-                                          Text(data['isPaid'] == true ? 'Price: ₹${data['price']}' : 'Free Event', style: TextStyle(color: Colors.grey[600])),
+                                          Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                data['isPaid'] == true
+                                                    ? 'Price: ₹${data['price']}'
+                                                    : 'Free Event',
+                                                style: TextStyle(
+                                                  color: Colors.grey[600],
+                                                ),
+                                              ),
+                                              if (data['venue'] != null) ...[
+                                                Text(
+                                                  'Venue: ${data['venue']}',
+                                                  style: TextStyle(
+                                                    color: Colors.grey[600],
+                                                    fontSize: 12,
+                                                  ),
+                                                ),
+                                              ],
+                                              if (data['eventDate'] !=
+                                                  null) ...[
+                                                Text(
+                                                  'Date: ${DateTime.fromMillisecondsSinceEpoch(data['eventDate'] as int).toLocal().toString().split(' ')[0]}',
+                                                  style: TextStyle(
+                                                    color: Colors.grey[600],
+                                                    fontSize: 12,
+                                                  ),
+                                                ),
+                                              ],
+                                              if (data['eventTime'] !=
+                                                  null) ...[
+                                                Text(
+                                                  'Time: ${data['eventTime']}',
+                                                  style: TextStyle(
+                                                    color: Colors.grey[600],
+                                                    fontSize: 12,
+                                                  ),
+                                                ),
+                                              ],
+                                            ],
+                                          ),
                                         ],
                                       ),
                                     ),
                                     ElevatedButton(
-                                      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => EventDetailsPage(eventId: eventId, eventData: data))),
+                                      onPressed: () => Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) =>
+                                              EventDetailsPage(
+                                                eventId: eventId,
+                                                eventData: data,
+                                              ),
+                                        ),
+                                      ),
                                       style: ElevatedButton.styleFrom(
-                                        backgroundColor: const Color(0xFF3F51B5),
+                                        backgroundColor: const Color(
+                                          0xFF3F51B5,
+                                        ),
                                         foregroundColor: Colors.white,
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            10,
+                                          ),
+                                        ),
                                       ),
                                       child: const Text('RSVP Now'),
                                     ),
@@ -1362,24 +2056,44 @@ class HomePage extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 12),
                                 StreamBuilder<QuerySnapshot>(
-                                  stream: FirebaseFirestore.instance.collection('events').doc(eventId).collection('registrations').snapshots(),
+                                  stream: FirebaseFirestore.instance
+                                      .collection('events')
+                                      .doc(eventId)
+                                      .collection('registrations')
+                                      .snapshots(),
                                   builder: (context, regSnap) {
-                                    final count = regSnap.hasData ? regSnap.data!.docs.length : 0;
+                                    final count = regSnap.hasData
+                                        ? regSnap.data!.docs.length
+                                        : 0;
                                     return Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         LinearProgressIndicator(
                                           value: count / maxReg,
                                           backgroundColor: Colors.grey[200],
-                                          valueColor: AlwaysStoppedAnimation<Color>(count >= maxReg ? Colors.red : const Color(0xFF3F51B5)),
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(
+                                                count >= maxReg
+                                                    ? Colors.red
+                                                    : const Color(0xFF3F51B5),
+                                              ),
                                           minHeight: 8,
-                                          borderRadius: BorderRadius.circular(10),
+                                          borderRadius: BorderRadius.circular(
+                                            10,
+                                          ),
                                         ),
                                         const SizedBox(height: 4),
-                                        Text('$count / $maxReg slots filled', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+                                        Text(
+                                          '$count / $maxReg slots filled',
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
                                       ],
                                     );
-                                  }
+                                  },
                                 ),
                               ],
                             ),
@@ -1401,7 +2115,11 @@ class HomePage extends StatelessWidget {
 class EventDetailsPage extends StatefulWidget {
   final String eventId;
   final Map<String, dynamic> eventData;
-  const EventDetailsPage({super.key, required this.eventId, required this.eventData});
+  const EventDetailsPage({
+    super.key,
+    required this.eventId,
+    required this.eventData,
+  });
 
   @override
   State<EventDetailsPage> createState() => _EventDetailsPageState();
@@ -1416,26 +2134,43 @@ class _EventDetailsPageState extends State<EventDetailsPage> {
 
     // Check if event is full
     final maxReg = widget.eventData['maxRegistrations'] ?? 100;
-    final regDocs = await FirebaseFirestore.instance.collection('events').doc(widget.eventId).collection('registrations').get();
+    final regDocs = await FirebaseFirestore.instance
+        .collection('events')
+        .doc(widget.eventId)
+        .collection('registrations')
+        .get();
     if (regDocs.docs.length >= maxReg) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sorry, this event is already full!')));
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Sorry, this event is already full!')),
+        );
       return;
     }
 
     setState(() => _isRegistering = true);
     try {
-      await FirebaseFirestore.instance.collection('events').doc(widget.eventId).collection('registrations').doc(user.uid).set({
-        'userId': user.uid,
-        'userName': appData.userName ?? 'Anonymous',
-        'userEmail': user.email,
-        'registeredAt': FieldValue.serverTimestamp(),
-      });
+      await FirebaseFirestore.instance
+          .collection('events')
+          .doc(widget.eventId)
+          .collection('registrations')
+          .doc(user.uid)
+          .set({
+            'userId': user.uid,
+            'userName': appData.userName ?? 'Anonymous',
+            'userEmail': user.email,
+            'registeredAt': FieldValue.serverTimestamp(),
+          });
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Registered Successfully!')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Registered Successfully!')),
+        );
         Navigator.pop(context);
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
     } finally {
       if (mounted) setState(() => _isRegistering = false);
     }
@@ -1454,7 +2189,14 @@ class _EventDetailsPageState extends State<EventDetailsPage> {
             flexibleSpace: FlexibleSpaceBar(
               background: data['imageUrl'] != null
                   ? Image.network(data['imageUrl'], fit: BoxFit.cover)
-                  : Container(color: const Color(0xFF3F51B5), child: const Icon(Icons.event, size: 80, color: Colors.white)),
+                  : Container(
+                      color: const Color(0xFF3F51B5),
+                      child: const Icon(
+                        Icons.event,
+                        size: 80,
+                        color: Colors.white,
+                      ),
+                    ),
             ),
           ),
           SliverToBoxAdapter(
@@ -1467,45 +2209,89 @@ class _EventDetailsPageState extends State<EventDetailsPage> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Expanded(
-                        child: Text(data['title'] ?? '', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Color(0xFF1A237E))),
+                        child: Text(
+                          data['title'] ?? '',
+                          style: const TextStyle(
+                            fontSize: 26,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1A237E),
+                          ),
+                        ),
                       ),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(color: const Color(0xFF3F51B5).withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF3F51B5).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
                         child: Text(
                           data['isPaid'] == true ? '₹${data['price']}' : 'FREE',
-                          style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF3F51B5)),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF3F51B5),
+                          ),
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 12),
                   StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance.collection('events').doc(widget.eventId).collection('registrations').snapshots(),
+                    stream: FirebaseFirestore.instance
+                        .collection('events')
+                        .doc(widget.eventId)
+                        .collection('registrations')
+                        .snapshots(),
                     builder: (context, regSnap) {
-                      final count = regSnap.hasData ? regSnap.data!.docs.length : 0;
+                      final count = regSnap.hasData
+                          ? regSnap.data!.docs.length
+                          : 0;
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           LinearProgressIndicator(
                             value: count / maxReg,
                             backgroundColor: Colors.grey[200],
-                            valueColor: AlwaysStoppedAnimation<Color>(count >= maxReg ? Colors.red : const Color(0xFF3F51B5)),
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              count >= maxReg
+                                  ? Colors.red
+                                  : const Color(0xFF3F51B5),
+                            ),
                             minHeight: 10,
                             borderRadius: BorderRadius.circular(10),
                           ),
                           const SizedBox(height: 6),
-                          Text('$count / $maxReg registrations', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                          Text(
+                            '$count / $maxReg registrations',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blueGrey,
+                            ),
+                          ),
                         ],
                       );
-                    }
+                    },
                   ),
                   const SizedBox(height: 24),
-                  const Text('About this event', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                  const Text(
+                    'About this event',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blueGrey,
+                    ),
+                  ),
                   const SizedBox(height: 10),
                   Text(
                     data['description'] ?? '',
-                    style: TextStyle(fontSize: 16, height: 1.6, color: Colors.grey[800]),
+                    style: TextStyle(
+                      fontSize: 16,
+                      height: 1.6,
+                      color: Colors.grey[800],
+                    ),
                   ),
                   const SizedBox(height: 40),
                   SizedBox(
@@ -1518,11 +2304,20 @@ class _EventDetailsPageState extends State<EventDetailsPage> {
                         foregroundColor: Colors.white,
                         elevation: 8,
                         shadowColor: const Color(0xFF3F51B5).withOpacity(0.4),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18),
+                        ),
                       ),
                       child: _isRegistering
                           ? const CircularProgressIndicator(color: Colors.white)
-                          : const Text('Register Now', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+                          : const Text(
+                              'Register Now',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 1.2,
+                              ),
+                            ),
                     ),
                   ),
                 ],
@@ -1576,22 +2371,41 @@ class _ProfilePageState extends State<ProfilePage> {
   Future<void> _pickImage() async {
     try {
       final picker = ImagePicker();
-      final picked = await picker.pickImage(source: ImageSource.gallery, maxWidth: 512, maxHeight: 512, imageQuality: 75);
+      final picked = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 512,
+        maxHeight: 512,
+        imageQuality: 75,
+      );
       if (picked != null) {
         setState(() => _isLoading = true);
         final bytes = await picked.readAsBytes();
         final user = FirebaseAuth.instance.currentUser;
         if (user != null) {
-          final storageRef = FirebaseStorage.instance.ref().child('profile_images/${user.uid}.jpg');
-          await storageRef.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
+          final storageRef = FirebaseStorage.instance.ref().child(
+            'profile_images/${user.uid}.jpg',
+          );
+          await storageRef.putData(
+            bytes,
+            SettableMetadata(contentType: 'image/jpeg'),
+          );
           final url = await storageRef.getDownloadURL();
-          await FirebaseFirestore.instance.collection('users').doc(user.uid).update({'profileImageUrl': url});
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .update({'profileImageUrl': url});
           appData.updateUserData(imageUrl: url);
-          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profile picture updated')));
+          if (mounted)
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Profile picture updated')),
+            );
         }
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error updating image: $e')));
+      if (mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error updating image: $e')));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -1606,16 +2420,21 @@ class _ProfilePageState extends State<ProfilePage> {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
-        await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
-          'department': dept,
-          'course': course,
-          'division': div,
-        });
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .update({'department': dept, 'course': course, 'division': div});
         appData.updateUserData(dept: dept, course: course, division: div);
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profile saved successfully!')));
+        if (mounted)
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Profile saved successfully!')),
+          );
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error saving profile: $e')));
+      if (mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error saving profile: $e')));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -1626,7 +2445,9 @@ class _ProfilePageState extends State<ProfilePage> {
     return ListenableBuilder(
       listenable: appData,
       builder: (context, _) {
-        final hasImage = appData.profileImageUrl != null && appData.profileImageUrl!.isNotEmpty;
+        final hasImage =
+            appData.profileImageUrl != null &&
+            appData.profileImageUrl!.isNotEmpty;
         return ListView(
           padding: EdgeInsets.zero,
           children: [
@@ -1638,7 +2459,11 @@ class _ProfilePageState extends State<ProfilePage> {
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [Color(0xFF1A237E), Color(0xFF3F51B5), Color(0xFF03A9F4)],
+                  colors: [
+                    Color(0xFF1A237E),
+                    Color(0xFF3F51B5),
+                    Color(0xFF03A9F4),
+                  ],
                 ),
                 borderRadius: BorderRadius.only(
                   bottomLeft: Radius.circular(30),
@@ -1659,32 +2484,66 @@ class _ProfilePageState extends State<ProfilePage> {
                             shape: BoxShape.circle,
                             border: Border.all(color: Colors.white, width: 3),
                             boxShadow: [
-                              BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 4)),
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.3),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
+                              ),
                             ],
-                            image: hasImage ? DecorationImage(image: NetworkImage(appData.profileImageUrl!), fit: BoxFit.cover) : null,
+                            image: hasImage
+                                ? DecorationImage(
+                                    image: NetworkImage(
+                                      appData.profileImageUrl!,
+                                    ),
+                                    fit: BoxFit.cover,
+                                  )
+                                : null,
                             color: hasImage ? null : Colors.white,
                           ),
                           child: hasImage
                               ? null
                               : Center(
                                   child: Text(
-                                    (appData.userName != null && appData.userName!.isNotEmpty) ? appData.userName![0].toUpperCase() : '?',
-                                    style: const TextStyle(fontSize: 40, fontWeight: FontWeight.bold, color: Color(0xFF3F51B5)),
+                                    (appData.userName != null &&
+                                            appData.userName!.isNotEmpty)
+                                        ? appData.userName![0].toUpperCase()
+                                        : '?',
+                                    style: const TextStyle(
+                                      fontSize: 40,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF3F51B5),
+                                    ),
                                   ),
                                 ),
                         ),
                         if (_isLoading)
                           Container(
-                            width: 100, height: 100,
-                            decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.black.withValues(alpha: 0.5)),
-                            child: const Center(child: CircularProgressIndicator(color: Colors.white)),
+                            width: 100,
+                            height: 100,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.black.withValues(alpha: 0.5),
+                            ),
+                            child: const Center(
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                              ),
+                            ),
                           ),
                         Positioned(
-                          bottom: 0, right: 0,
+                          bottom: 0,
+                          right: 0,
                           child: Container(
                             padding: const EdgeInsets.all(6),
-                            decoration: const BoxDecoration(color: Colors.greenAccent, shape: BoxShape.circle),
-                            child: const Icon(Icons.camera_alt, color: Colors.white, size: 16),
+                            decoration: const BoxDecoration(
+                              color: Colors.greenAccent,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.camera_alt,
+                              color: Colors.white,
+                              size: 16,
+                            ),
                           ),
                         ),
                       ],
@@ -1693,12 +2552,19 @@ class _ProfilePageState extends State<ProfilePage> {
                   const SizedBox(height: 14),
                   Text(
                     appData.userName ?? 'Loading...',
-                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     appData.userEmail ?? '',
-                    style: TextStyle(fontSize: 14, color: Colors.white.withValues(alpha: 0.75)),
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.white.withValues(alpha: 0.75),
+                    ),
                   ),
                 ],
               ),
@@ -1711,25 +2577,49 @@ class _ProfilePageState extends State<ProfilePage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Edit Details', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                  const Text(
+                    'Edit Details',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blueGrey,
+                    ),
+                  ),
                   const SizedBox(height: 15),
-                  _buildEditField(Icons.business_rounded, 'Department', _deptController),
+                  _buildEditField(
+                    Icons.business_rounded,
+                    'Department',
+                    _deptController,
+                  ),
                   const SizedBox(height: 15),
-                  _buildEditField(Icons.school_rounded, 'Course', _courseController),
+                  _buildEditField(
+                    Icons.school_rounded,
+                    'Course',
+                    _courseController,
+                  ),
                   const SizedBox(height: 15),
-                  _buildEditField(Icons.groups_rounded, 'Division', _divController),
+                  _buildEditField(
+                    Icons.groups_rounded,
+                    'Division',
+                    _divController,
+                  ),
                   const SizedBox(height: 25),
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
                       onPressed: _isLoading ? null : _saveProfile,
                       icon: const Icon(Icons.save),
-                      label: const Text('Save Profile', style: TextStyle(fontSize: 16)),
+                      label: const Text(
+                        'Save Profile',
+                        style: TextStyle(fontSize: 16),
+                      ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF3F51B5),
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
                       ),
                     ),
                   ),
@@ -1742,7 +2632,9 @@ class _ProfilePageState extends State<ProfilePage> {
                           context: context,
                           builder: (context) => AlertDialog(
                             title: const Text('Help & Support'),
-                            content: const Text('For any queries or support, please contact us at support@campussync.com'),
+                            content: const Text(
+                              'For any queries or support, please contact us at support@campussync.com',
+                            ),
                             actions: [
                               TextButton(
                                 onPressed: () => Navigator.pop(context),
@@ -1752,12 +2644,27 @@ class _ProfilePageState extends State<ProfilePage> {
                           ),
                         );
                       },
-                      icon: const Icon(Icons.help_outline_rounded, color: Color(0xFF3F51B5), size: 20),
-                      label: const Text('Help & Support', style: TextStyle(color: Color(0xFF3F51B5), fontWeight: FontWeight.w600)),
+                      icon: const Icon(
+                        Icons.help_outline_rounded,
+                        color: Color(0xFF3F51B5),
+                        size: 20,
+                      ),
+                      label: const Text(
+                        'Help & Support',
+                        style: TextStyle(
+                          color: Color(0xFF3F51B5),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                       style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: Color(0xFF3F51B5), width: 1.5),
+                        side: const BorderSide(
+                          color: Color(0xFF3F51B5),
+                          width: 1.5,
+                        ),
                         padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
                       ),
                     ),
                   ),
@@ -1768,12 +2675,24 @@ class _ProfilePageState extends State<ProfilePage> {
                       onPressed: () async {
                         await FirebaseAuth.instance.signOut();
                       },
-                      icon: const Icon(Icons.logout_rounded, color: Colors.red, size: 20),
-                      label: const Text('Logout', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600)),
+                      icon: const Icon(
+                        Icons.logout_rounded,
+                        color: Colors.red,
+                        size: 20,
+                      ),
+                      label: const Text(
+                        'Logout',
+                        style: TextStyle(
+                          color: Colors.red,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                       style: OutlinedButton.styleFrom(
                         side: const BorderSide(color: Colors.red, width: 1.5),
                         padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
                       ),
                     ),
                   ),
@@ -1787,16 +2706,26 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Widget _buildEditField(IconData icon, String label, TextEditingController controller) {
+  Widget _buildEditField(
+    IconData icon,
+    String label,
+    TextEditingController controller,
+  ) {
     return Container(
-      decoration: BoxDecoration(color: const Color(0xFFF5F5F5), borderRadius: BorderRadius.circular(14)),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5F5F5),
+        borderRadius: BorderRadius.circular(14),
+      ),
       child: TextField(
         controller: controller,
         decoration: InputDecoration(
           labelText: label,
           prefixIcon: Icon(icon, color: const Color(0xFF3F51B5)),
           border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 16,
+          ),
         ),
       ),
     );
