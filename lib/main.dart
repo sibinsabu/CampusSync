@@ -2,16 +2,185 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui';
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:device_frame/device_frame.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'firebase_options.dart';
+
+// Helper function to generate unique QR code
+String _generateUniqueQRCode(String eventId, String userId) {
+  final timestamp = DateTime.now().millisecondsSinceEpoch;
+  final random = Random().nextInt(9999).toString().padLeft(4, '0');
+  return 'CAMPUS_${eventId.substring(0, 8)}_${userId.substring(0, 8)}_${timestamp}_$random';
+}
+
+// Helper function to generate and save QR code to local storage
+Future<String?> _generateAndSaveQRCode(
+  String eventId,
+  String userId,
+  String eventTitle,
+  String userName,
+) async {
+  try {
+    // Generate unique QR code data
+    final qrData = _generateUniqueQRCode(eventId, userId);
+
+    // Create QR data with more information
+    final qrContent =
+        '''
+CAMPUS SYNC EVENT REGISTRATION
+===============================
+Event ID: $eventId
+User ID: $userId
+Event: $eventTitle
+Attendee: $userName
+QR Code: $qrData
+Registered: ${DateTime.now().toIso8601String()}
+===============================
+This QR code is your entry pass for the event.
+    ''';
+
+    // Generate QR code image
+    final qrPainter = QrPainter(
+      data: qrContent.trim(),
+      version: QrVersions.auto,
+      errorCorrectionLevel: QrErrorCorrectLevel.M,
+      color: const Color(0xFF000000),
+      emptyColor: const Color(0xFFFFFFFF),
+    );
+
+    final image = await qrPainter.toImageData(300);
+    if (image == null) {
+      debugPrint('Failed to generate QR code image');
+      return null;
+    }
+    final bytes = image.buffer.asUint8List();
+
+    // Save to local storage
+    final directory = await getApplicationDocumentsDirectory();
+    final qrCodesDir = Directory('${directory.path}/qr_codes');
+
+    if (!await qrCodesDir.exists()) {
+      await qrCodesDir.create(recursive: true);
+    }
+
+    final fileName =
+        'qr_${eventId}_${userId}_${DateTime.now().millisecondsSinceEpoch}.png';
+    final qrPath = '${qrCodesDir.path}/$fileName';
+    final file = File(qrPath);
+
+    await file.writeAsBytes(bytes);
+    debugPrint('QR code saved locally: $qrPath');
+
+    return qrPath;
+  } catch (e) {
+    debugPrint('Error generating QR code: $e');
+    return null;
+  }
+}
+
+// Helper function to create image widget from local path or network URL
+Widget _buildEventImage(
+  String? imagePath,
+  String? imageUrl, {
+  double height = 150,
+  double? width,
+}) {
+  if (imagePath != null && imagePath.isNotEmpty) {
+    try {
+      final file = File(imagePath);
+      if (file.existsSync()) {
+        return Image.file(
+          file,
+          height: height,
+          width: width ?? double.infinity,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            return Container(
+              height: height,
+              width: width ?? double.infinity,
+              color: Colors.grey[300],
+              child: Icon(Icons.broken_image, color: Colors.grey[600]),
+            );
+          },
+        );
+      }
+    } catch (e) {
+      debugPrint('Error loading local image: $e');
+    }
+  }
+
+  if (imageUrl != null && imageUrl.isNotEmpty) {
+    return Image.network(
+      imageUrl,
+      height: height,
+      width: width ?? double.infinity,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) {
+        return Container(
+          height: height,
+          width: width ?? double.infinity,
+          color: Colors.grey[300],
+          child: Icon(Icons.broken_image, color: Colors.grey[600]),
+        );
+      },
+    );
+  }
+
+  return Container(
+    height: height,
+    width: width ?? double.infinity,
+    color: Colors.grey[300],
+    child: Icon(Icons.image, color: Colors.grey[600]),
+  );
+}
+
+// Helper function to save image to local storage
+Future<String?> _saveImageToLocal(Uint8List imageBytes, String eventId) async {
+  try {
+    final directory = await getApplicationDocumentsDirectory();
+    final eventImagesDir = Directory('${directory.path}/event_images');
+
+    // Create directory if it doesn't exist
+    if (!await eventImagesDir.exists()) {
+      await eventImagesDir.create(recursive: true);
+    }
+
+    final fileName =
+        'event_${eventId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+    final imagePath = '${eventImagesDir.path}/$fileName';
+    final file = File(imagePath);
+
+    await file.writeAsBytes(imageBytes);
+    debugPrint('Image saved locally: $imagePath');
+
+    return imagePath;
+  } catch (e) {
+    debugPrint('Error saving image locally: $e');
+    return null;
+  }
+}
+
+// Helper function to check if storage object exists
+Future<bool> _storageObjectExists(String imageUrl) async {
+  try {
+    final ref = FirebaseStorage.instance.refFromURL(imageUrl);
+    await ref.getMetadata();
+    return true;
+  } catch (e) {
+    debugPrint('Storage object does not exist or is inaccessible: $e');
+    return false;
+  }
+}
 
 // Global Data Manager for reactivity and platform compatibility
 class AppData extends ChangeNotifier {
@@ -113,6 +282,7 @@ class MyApp extends StatelessWidget {
           backgroundColor: Color(0xFF3F51B5),
           foregroundColor: Colors.white,
         ),
+        listTileTheme: const ListTileThemeData(tileColor: Colors.transparent),
         bottomNavigationBarTheme: const BottomNavigationBarThemeData(
           selectedItemColor: Color(0xFF3F51B5),
           unselectedItemColor: Colors.grey,
@@ -1207,29 +1377,16 @@ class ManageEventsPage extends StatelessWidget {
               final eventId = events[i].id;
               final data = events[i].data() as Map<String, dynamic>;
               final title = data['title'] ?? 'No Title';
-              final imageUrl = data['imageUrl'];
+              final localImagePath = data['localImagePath'] as String?;
+              final imageUrl = data['imageUrl'] as String?; // Legacy support
               final maxReg = data['maxRegistrations'] ?? 100;
 
               return Card(
-                margin: const EdgeInsets.only(bottom: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15),
-                ),
+                margin: const EdgeInsets.all(12),
                 elevation: 3,
                 child: Column(
                   children: [
-                    if (imageUrl != null)
-                      ClipRRect(
-                        borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(15),
-                        ),
-                        child: Image.network(
-                          imageUrl,
-                          height: 150,
-                          width: double.infinity,
-                          fit: BoxFit.cover,
-                        ),
-                      ),
+                    _buildEventImage(localImagePath, imageUrl, height: 150),
                     ListTile(
                       title: Text(
                         title,
@@ -1335,11 +1492,60 @@ class ManageEventsPage extends StatelessWidget {
           ),
           TextButton(
             onPressed: () async {
-              await FirebaseFirestore.instance
-                  .collection('events')
-                  .doc(eventId)
-                  .delete();
-              if (context.mounted) Navigator.pop(context);
+              try {
+                // First get the event data to find the image URL
+                final eventDoc = await FirebaseFirestore.instance
+                    .collection('events')
+                    .doc(eventId)
+                    .get();
+
+                if (eventDoc.exists) {
+                  final eventData = eventDoc.data() as Map<String, dynamic>;
+                  final imageUrl = eventData['imageUrl'] as String?;
+
+                  // Delete the image from storage if it exists
+                  if (imageUrl != null && imageUrl.isNotEmpty) {
+                    if (await _storageObjectExists(imageUrl)) {
+                      try {
+                        final ref = FirebaseStorage.instance.refFromURL(
+                          imageUrl,
+                        );
+                        await ref.delete();
+                        debugPrint('Image deleted successfully from storage');
+                      } catch (storageError) {
+                        debugPrint(
+                          'Warning: Could not delete image from storage: $storageError',
+                        );
+                        // Continue with event deletion even if image deletion fails
+                      }
+                    } else {
+                      debugPrint(
+                        'Image no longer exists in storage, skipping deletion',
+                      );
+                    }
+                  }
+                }
+
+                // Delete the event document
+                await FirebaseFirestore.instance
+                    .collection('events')
+                    .doc(eventId)
+                    .delete();
+
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Event deleted successfully')),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error deleting event: $e')),
+                  );
+                }
+              }
             },
             child: const Text('Delete', style: TextStyle(color: Colors.red)),
           ),
@@ -1468,30 +1674,74 @@ class _AddEventPageState extends State<AddEventPage> {
 
     setState(() => _isLoading = true);
     try {
-      String? imageUrl;
-      if (_coverImageBytes != null) {
-        final ref = FirebaseStorage.instance.ref().child(
-          'event_covers/${DateTime.now().millisecondsSinceEpoch}.jpg',
-        );
-        await ref.putData(
-          _coverImageBytes!,
-          SettableMetadata(contentType: 'image/jpeg'),
-        );
-        imageUrl = await ref.getDownloadURL();
+      final parsedDate = _parseDate(_dateController.text.trim());
+      final selectedTime = _selectedTime;
+
+      debugPrint('Date controller text: "${_dateController.text.trim()}"');
+      debugPrint('Parsed date: $parsedDate');
+      debugPrint('Selected time: $selectedTime');
+
+      if (parsedDate == null || selectedTime == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Please select both date and time')),
+          );
+        }
+        return;
       }
 
+      String? localImagePath;
+      if (_coverImageBytes != null) {
+        // Create event first to get ID, then save image locally
+        final eventDoc = await FirebaseFirestore.instance
+            .collection('events')
+            .add({
+              'title': title,
+              'description': description,
+              'venue': venue,
+              'eventDate': parsedDate.millisecondsSinceEpoch,
+              'eventTime': selectedTime.format(context),
+              'isPaid': _isPaid,
+              'price': _isPaid ? double.tryParse(priceStr) ?? 0.0 : 0.0,
+              'maxRegistrations': int.tryParse(maxRegStr) ?? 100,
+              'localImagePath': null, // Will be updated after image save
+              'createdAt': FieldValue.serverTimestamp(),
+            });
+
+        // Save image locally with the event ID
+        localImagePath = await _saveImageToLocal(
+          _coverImageBytes!,
+          eventDoc.id,
+        );
+
+        // Update the event document with the local image path
+        if (localImagePath != null) {
+          await eventDoc.update({'localImagePath': localImagePath});
+          debugPrint('Event created with local image: $localImagePath');
+        } else {
+          debugPrint('Event created without image (local save failed)');
+        }
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Event published successfully!')),
+          );
+          Navigator.pop(context);
+        }
+        return; // Exit early since we already created the event
+      }
+
+      // Create event without image
       await FirebaseFirestore.instance.collection('events').add({
         'title': title,
         'description': description,
         'venue': venue,
-        'eventDate': _parseDate(
-          _dateController.text.trim(),
-        )!.millisecondsSinceEpoch,
-        'eventTime': _selectedTime!.format(context),
+        'eventDate': parsedDate.millisecondsSinceEpoch,
+        'eventTime': selectedTime.format(context),
         'isPaid': _isPaid,
         'price': _isPaid ? double.tryParse(priceStr) ?? 0.0 : 0.0,
         'maxRegistrations': int.tryParse(maxRegStr) ?? 100,
-        'imageUrl': imageUrl,
+        'localImagePath': null,
         'createdAt': FieldValue.serverTimestamp(),
       });
 
@@ -1502,6 +1752,7 @@ class _AddEventPageState extends State<AddEventPage> {
         Navigator.pop(context);
       }
     } catch (e) {
+      debugPrint('Error creating event: $e');
       if (mounted)
         ScaffoldMessenger.of(
           context,
@@ -1728,7 +1979,8 @@ class _AddEventPageState extends State<AddEventPage> {
     if (input.trim().isEmpty) return null;
 
     try {
-      final parts = input.trim().split('/');
+      // Handle both DD/MM/YYYY and DD-MM-YYYY formats
+      final parts = input.trim().split(RegExp(r'[/\-]'));
       if (parts.length != 3) return null;
 
       final day = int.tryParse(parts[0]);
@@ -1739,16 +1991,16 @@ class _AddEventPageState extends State<AddEventPage> {
       if (month < 1 || month > 12 || day < 1 || day > 31) return null;
 
       final date = DateTime(year, month, day);
+      // Allow past dates but show a warning
       if (date.isBefore(DateTime.now())) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Date must be today or in the future')),
-        );
-        return null;
+        debugPrint('Warning: Date is in the past');
       }
       return date;
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Invalid date format. Use DD/MM/YYYY')),
+        const SnackBar(
+          content: Text('Invalid date format. Use DD/MM/YYYY or DD-MM-YYYY'),
+        ),
       );
       return null;
     }
@@ -1933,7 +2185,9 @@ class HomePage extends StatelessWidget {
                   final eventId = events[i].id;
                   final data = events[i].data() as Map<String, dynamic>;
                   final title = data['title'] ?? 'No Title';
-                  final imageUrl = data['imageUrl'];
+                  final localImagePath = data['localImagePath'] as String?;
+                  final imageUrl =
+                      data['imageUrl'] as String?; // Legacy support
                   final maxReg = data['maxRegistrations'] ?? 100;
 
                   return Card(
@@ -1956,13 +2210,11 @@ class HomePage extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          if (imageUrl != null)
-                            Image.network(
-                              imageUrl,
-                              height: 160,
-                              width: double.infinity,
-                              fit: BoxFit.cover,
-                            ),
+                          _buildEventImage(
+                            localImagePath,
+                            imageUrl,
+                            height: 160,
+                          ),
                           Padding(
                             padding: const EdgeInsets.all(16),
                             child: Column(
@@ -2147,8 +2399,38 @@ class _EventDetailsPageState extends State<EventDetailsPage> {
       return;
     }
 
+    // Check if event is paid
+    final isPaid = widget.eventData['isPaid'] == true;
+    final price = (widget.eventData['price'] as num?)?.toDouble() ?? 0.0;
+    final eventTitle = widget.eventData['title'] ?? 'Event';
+
+    if (isPaid && price > 0) {
+      // Redirect to payment page for paid events
+      if (mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => PaymentPage(
+              eventId: widget.eventId,
+              eventTitle: eventTitle,
+              amount: price,
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    // Direct registration for free events
     setState(() => _isRegistering = true);
     try {
+      // Generate QR code
+      final qrPath = await _generateAndSaveQRCode(
+        widget.eventId,
+        user.uid,
+        widget.eventData['title'] ?? 'Event',
+        appData.userName ?? 'Anonymous',
+      );
+
       await FirebaseFirestore.instance
           .collection('events')
           .doc(widget.eventId)
@@ -2159,10 +2441,14 @@ class _EventDetailsPageState extends State<EventDetailsPage> {
             'userName': appData.userName ?? 'Anonymous',
             'userEmail': user.email,
             'registeredAt': FieldValue.serverTimestamp(),
+            'qrCode': _generateUniqueQRCode(widget.eventId, user.uid),
+            'qrPath': qrPath,
           });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Registered Successfully!')),
+          const SnackBar(
+            content: Text('Registered Successfully! QR code generated.'),
+          ),
         );
         Navigator.pop(context);
       }
@@ -2187,16 +2473,11 @@ class _EventDetailsPageState extends State<EventDetailsPage> {
             expandedHeight: 300,
             pinned: true,
             flexibleSpace: FlexibleSpaceBar(
-              background: data['imageUrl'] != null
-                  ? Image.network(data['imageUrl'], fit: BoxFit.cover)
-                  : Container(
-                      color: const Color(0xFF3F51B5),
-                      child: const Icon(
-                        Icons.event,
-                        size: 80,
-                        color: Colors.white,
-                      ),
-                    ),
+              background: _buildEventImage(
+                data['localImagePath'] as String?,
+                data['imageUrl'] as String?,
+                height: 300,
+              ),
             ),
           ),
           SliverToBoxAdapter(
@@ -2440,6 +2721,238 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
+  Widget _buildRegisteredEventsSection() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return const Padding(
+        padding: EdgeInsets.all(20),
+        child: Text(
+          'Please log in to view your registered events',
+          style: TextStyle(color: Colors.grey),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          child: Row(
+            children: [
+              Icon(Icons.event_available, color: Color(0xFF3F51B5), size: 28),
+              SizedBox(width: 12),
+              Text(
+                'Your Registered Events',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF3F51B5),
+                ),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(
+          height: 280,
+          child: StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collectionGroup('registrations')
+                .where('userId', isEqualTo: user.uid)
+                .orderBy('registeredAt', descending: true)
+                .limit(5)
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return Padding(
+                  padding: const EdgeInsets.all(40),
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.error_outline,
+                          size: 48,
+                          color: Colors.red[400],
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Error loading events',
+                          style: TextStyle(color: Colors.red[400]),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Please check your connection and try again',
+                          style: TextStyle(color: Colors.grey[600]),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Padding(
+                  padding: EdgeInsets.all(40),
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
+              final registrations = snapshot.data?.docs ?? [];
+              if (registrations.isEmpty) {
+                return Padding(
+                  padding: const EdgeInsets.all(30),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.event_busy,
+                        size: 64,
+                        color: Color(0xFF9E9E9E),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'No registered events yet',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF757575),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Register for events from the Home tab to get started!',
+                        style: TextStyle(color: Colors.grey[500]),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                );
+              }
+              return ListView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                itemCount: registrations.length,
+                itemBuilder: (context, i) {
+                  final regDoc = registrations[i];
+                  final eventId = regDoc.reference.parent.parent?.id ?? '';
+                  if (eventId.isEmpty) {
+                    return const ListTile(
+                      title: Text('Event ID unavailable'),
+                      subtitle: Text('Cannot locate event details'),
+                    );
+                  }
+                  return StreamBuilder<DocumentSnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('events')
+                        .doc(eventId)
+                        .snapshots(),
+                    builder: (context, eventSnap) {
+                      if (eventSnap.hasError) {
+                        return const ListTile(
+                          leading: Icon(Icons.error_outline, color: Colors.red),
+                          title: Text('Error loading event'),
+                          subtitle: Text('Please try again later'),
+                        );
+                      }
+                      if (!eventSnap.hasData ||
+                          !(eventSnap.data?.exists ?? false)) {
+                        return const ListTile(
+                          leading: Icon(Icons.event_busy, color: Colors.grey),
+                          title: Text('Event unavailable'),
+                          subtitle: Text('This event may have been deleted'),
+                        );
+                      }
+                      final eventData =
+                          eventSnap.data?.data() as Map<String, dynamic>? ?? {};
+                      return Card(
+                        margin: EdgeInsets.only(bottom: 12),
+                        child: ListTile(
+                          dense: true,
+                          leading: Builder(
+                            builder: (context) {
+                              final localImagePath =
+                                  eventData['localImagePath'] as String?;
+                              final imageUrl = eventData['imageUrl'] as String?;
+                              return _buildEventImage(
+                                localImagePath,
+                                imageUrl,
+                                height: 50,
+                                width: 50,
+                              );
+                            },
+                          ),
+                          title: Text(
+                            eventData['title'] ?? 'Untitled Event',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (eventData['venue'] != null)
+                                Text(
+                                  eventData['venue'],
+                                  style: TextStyle(fontSize: 12),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              if (eventData['eventDate'] != null)
+                                Text(
+                                  eventData['eventDate'] != null
+                                      ? DateTime.fromMillisecondsSinceEpoch(
+                                          eventData['eventDate'] as int,
+                                        ).toLocal().toString().split(' ')[0]
+                                      : DateTime.now()
+                                            .toLocal()
+                                            .toString()
+                                            .split(' ')[0],
+                                  style: TextStyle(fontSize: 12),
+                                ),
+                              Text(
+                                eventData['eventTime'] ?? 'Time TBD',
+                                style: TextStyle(fontSize: 12),
+                              ),
+                              Text(
+                                eventData['isPaid'] == true
+                                    ? '₹${eventData['price'] ?? 0}'
+                                    : 'Free',
+                                style: TextStyle(
+                                  color: Color(0xFF4CAF50),
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                          trailing: Icon(
+                            Icons.check_circle,
+                            color: Colors.green,
+                            size: 24,
+                          ),
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => EventDetailsPage(
+                                eventId: eventId,
+                                eventData: eventData,
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -2668,7 +3181,31 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                     ),
                   ),
+                  _buildRegisteredEventsSection(),
                   const SizedBox(height: 15),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => const QRCodeDisplayPage(),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.qr_code_scanner),
+                      label: const Text('View My QR Codes'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF3F51B5),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
@@ -2727,6 +3264,597 @@ class _ProfilePageState extends State<ProfilePage> {
             vertical: 16,
           ),
         ),
+      ),
+    );
+  }
+}
+
+// Dummy Payment Page
+class PaymentPage extends StatefulWidget {
+  final String eventId;
+  final String eventTitle;
+  final double amount;
+
+  const PaymentPage({
+    super.key,
+    required this.eventId,
+    required this.eventTitle,
+    required this.amount,
+  });
+
+  @override
+  State<PaymentPage> createState() => _PaymentPageState();
+}
+
+class _PaymentPageState extends State<PaymentPage> {
+  final _cardNumberController = TextEditingController();
+  final _cardHolderController = TextEditingController();
+  final _expiryController = TextEditingController();
+  final _cvvController = TextEditingController();
+  bool _isProcessing = false;
+
+  @override
+  void dispose() {
+    _cardNumberController.dispose();
+    _cardHolderController.dispose();
+    _expiryController.dispose();
+    _cvvController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _processPayment() async {
+    if (_cardNumberController.text.length < 16 ||
+        _cardHolderController.text.isEmpty ||
+        _expiryController.text.isEmpty ||
+        _cvvController.text.length < 3) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please fill all payment details correctly'),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isProcessing = true);
+
+    // Simulate payment processing
+    await Future.delayed(const Duration(seconds: 3));
+
+    // Register for the event after successful payment
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        // Generate QR code
+        final qrPath = await _generateAndSaveQRCode(
+          widget.eventId,
+          user.uid,
+          widget.eventTitle,
+          appData.userName ?? 'Anonymous',
+        );
+
+        await FirebaseFirestore.instance
+            .collection('events')
+            .doc(widget.eventId)
+            .collection('registrations')
+            .doc(user.uid)
+            .set({
+              'userId': user.uid,
+              'userName': appData.userName ?? 'Anonymous',
+              'userEmail': user.email,
+              'registeredAt': FieldValue.serverTimestamp(),
+              'paymentAmount': widget.amount,
+              'paymentMethod': 'Card',
+              'paidAt': FieldValue.serverTimestamp(),
+              'qrCode': _generateUniqueQRCode(widget.eventId, user.uid),
+              'qrPath': qrPath,
+            });
+      }
+    } catch (e) {
+      debugPrint('Error registering after payment: $e');
+      // Continue to success page even if registration fails
+    }
+
+    if (mounted) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (context) => PaymentSuccessPage(
+            eventTitle: widget.eventTitle,
+            amount: widget.amount,
+          ),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Payment'),
+        backgroundColor: const Color(0xFF3F51B5),
+        foregroundColor: Colors.white,
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Event: ${widget.eventTitle}',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Amount: ₹${widget.amount.toStringAsFixed(2)}',
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF4CAF50),
+              ),
+            ),
+            const SizedBox(height: 30),
+            const Text(
+              'Payment Details',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 20),
+            _buildPaymentField(
+              controller: _cardNumberController,
+              label: 'Card Number',
+              icon: Icons.credit_card,
+              keyboardType: TextInputType.number,
+              maxLength: 16,
+            ),
+            const SizedBox(height: 15),
+            _buildPaymentField(
+              controller: _cardHolderController,
+              label: 'Card Holder Name',
+              icon: Icons.person,
+            ),
+            const SizedBox(height: 15),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildPaymentField(
+                    controller: _expiryController,
+                    label: 'MM/YY',
+                    icon: Icons.calendar_today,
+                    maxLength: 5,
+                  ),
+                ),
+                const SizedBox(width: 15),
+                Expanded(
+                  child: _buildPaymentField(
+                    controller: _cvvController,
+                    label: 'CVV',
+                    icon: Icons.lock,
+                    keyboardType: TextInputType.number,
+                    maxLength: 3,
+                    obscureText: true,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 30),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _isProcessing ? null : _processPayment,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF4CAF50),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                child: _isProcessing
+                    ? const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
+                            ),
+                          ),
+                          SizedBox(width: 10),
+                          Text('Processing...'),
+                        ],
+                      )
+                    : Text(
+                        'Pay ₹${widget.amount.toStringAsFixed(2)}',
+                        style: const TextStyle(fontSize: 16),
+                      ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Note: This is a dummy payment gateway for demonstration purposes only.',
+              style: TextStyle(color: Colors.grey, fontSize: 12),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPaymentField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    TextInputType? keyboardType,
+    int? maxLength,
+    bool obscureText = false,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5F5F5),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: TextField(
+        controller: controller,
+        keyboardType: keyboardType,
+        maxLength: maxLength,
+        obscureText: obscureText,
+        decoration: InputDecoration(
+          labelText: label,
+          prefixIcon: Icon(icon, color: const Color(0xFF3F51B5)),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 16,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Payment Success Page
+class PaymentSuccessPage extends StatefulWidget {
+  final String eventTitle;
+  final double amount;
+
+  const PaymentSuccessPage({
+    super.key,
+    required this.eventTitle,
+    required this.amount,
+  });
+
+  @override
+  State<PaymentSuccessPage> createState() => _PaymentSuccessPageState();
+}
+
+class _PaymentSuccessPageState extends State<PaymentSuccessPage> {
+  int _countdown = 7;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _startCountdown();
+  }
+
+  void _startCountdown() {
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_countdown > 0) {
+        setState(() {
+          _countdown--;
+        });
+      } else {
+        timer.cancel();
+        _redirectToHome();
+      }
+    });
+  }
+
+  void _redirectToHome() {
+    if (mounted) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const HomePage()),
+        (route) => false,
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF4CAF50),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 100,
+              height: 100,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.2),
+                    blurRadius: 10,
+                    offset: const Offset(0, 5),
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.check,
+                size: 60,
+                color: Color(0xFF4CAF50),
+              ),
+            ),
+            const SizedBox(height: 30),
+            const Text(
+              'Payment Successful!',
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 15),
+            Text(
+              'Registration for ${widget.eventTitle}',
+              style: const TextStyle(fontSize: 18, color: Colors.white),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Amount: ₹${widget.amount.toStringAsFixed(2)}',
+              style: const TextStyle(fontSize: 16, color: Colors.white70),
+            ),
+            const SizedBox(height: 40),
+            Container(
+              padding: const EdgeInsets.all(20),
+              margin: const EdgeInsets.symmetric(horizontal: 40),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(15),
+              ),
+              child: Column(
+                children: [
+                  const Text(
+                    'You will be redirected to home in',
+                    style: TextStyle(fontSize: 16, color: Colors.white),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    '$_countdown seconds',
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 30),
+            ElevatedButton(
+              onPressed: _redirectToHome,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: const Color(0xFF4CAF50),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 30,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(25),
+                ),
+              ),
+              child: const Text('Go to Home Now'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// QR Code Display Page
+class QRCodeDisplayPage extends StatefulWidget {
+  const QRCodeDisplayPage({super.key});
+
+  @override
+  State<QRCodeDisplayPage> createState() => _QRCodeDisplayPageState();
+}
+
+class _QRCodeDisplayPageState extends State<QRCodeDisplayPage> {
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return const Scaffold(
+        body: Center(child: Text('Please log in to view QR codes')),
+      );
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('My Event QR Codes'),
+        backgroundColor: const Color(0xFF3F51B5),
+        foregroundColor: Colors.white,
+      ),
+      body: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+            .collectionGroup('registrations')
+            .where('userId', isEqualTo: user.uid)
+            .orderBy('registeredAt', descending: true)
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (snapshot.hasError) {
+            return Center(child: Text('Error: ${snapshot.error}'));
+          }
+
+          final registrations = snapshot.data?.docs ?? [];
+          if (registrations.isEmpty) {
+            return const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.qr_code_scanner, size: 64, color: Colors.grey),
+                  SizedBox(height: 16),
+                  Text(
+                    'No QR codes found',
+                    style: TextStyle(fontSize: 18, color: Colors.grey),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'Register for events to generate QR codes',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: registrations.length,
+            itemBuilder: (context, index) {
+              final regDoc = registrations[index];
+              final regData = regDoc.data() as Map<String, dynamic>;
+              final qrPath = regData['qrPath'] as String?;
+              final qrCode = regData['qrCode'] as String?;
+              final eventId = regDoc.reference.parent.parent?.id ?? '';
+
+              return FutureBuilder<DocumentSnapshot>(
+                future: FirebaseFirestore.instance
+                    .collection('events')
+                    .doc(eventId)
+                    .get(),
+                builder: (context, eventSnap) {
+                  final eventData =
+                      eventSnap.data?.data() as Map<String, dynamic>? ?? {};
+                  final eventTitle = eventData['title'] ?? 'Unknown Event';
+
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 16),
+                    elevation: 4,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            eventTitle,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          if (qrPath != null)
+                            Center(
+                              child: Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(12),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.1),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: Image.file(
+                                  File(qrPath),
+                                  width: 200,
+                                  height: 200,
+                                ),
+                              ),
+                            )
+                          else
+                            Center(
+                              child: Container(
+                                width: 200,
+                                height: 200,
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[200],
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.qr_code,
+                                      size: 64,
+                                      color: Colors.grey,
+                                    ),
+                                    SizedBox(height: 8),
+                                    Text(
+                                      'QR Code',
+                                      style: TextStyle(color: Colors.grey),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          const SizedBox(height: 12),
+                          if (qrCode != null)
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'QR Code:',
+                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                                const SizedBox(height: 4),
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey[100],
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    qrCode,
+                                    style: const TextStyle(
+                                      fontFamily: 'monospace',
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Registered: ${DateTime.fromMillisecondsSinceEpoch(regData['registeredAt']?.millisecondsSinceEpoch ?? 0).toString().split('.')[0]}',
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          );
+        },
       ),
     );
   }
