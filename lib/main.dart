@@ -23,7 +23,7 @@ String _generateUniqueQRCode(String eventId, String userId) {
   return 'CAMPUS_${eventId.substring(0, 8)}_${userId.substring(0, 8)}_${timestamp}_$random';
 }
 
-// Helper function to generate and save QR code to local storage
+// Helper function to generate and save QR code to local storage only
 Future<String?> _generateAndSaveQRCode(
   String eventId,
   String userId,
@@ -63,6 +63,7 @@ This QR code is your entry pass for the event.
       debugPrint('Failed to generate QR code image');
       return null;
     }
+
     final bytes = image.buffer.asUint8List();
 
     // Save to local storage
@@ -1625,6 +1626,10 @@ class _AddEventPageState extends State<AddEventPage> {
   Uint8List? _coverImageBytes;
   bool _isLoading = false;
 
+  final _deptController = TextEditingController();
+  final _courseController = TextEditingController();
+  final _divController = TextEditingController();
+
   Future<void> _pickCoverImage() async {
     try {
       final picker = ImagePicker();
@@ -1938,15 +1943,74 @@ class _AddEventPageState extends State<AddEventPage> {
   }
 
   Widget _buildDateField() {
-    return _buildTextField(
-      'Event Date (DD/MM/YYYY)',
-      _dateController,
-      Icons.calendar_today,
-      keyboardType: const TextInputType.numberWithOptions(
-        signed: true,
-        decimal: true,
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: Colors.grey[200]!),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: ListTile(
+          leading: Icon(Icons.calendar_today, color: const Color(0xFF3F51B5)),
+          title: Text(
+            _dateController.text.isEmpty
+                ? 'Event Date (DD/MM/YYYY)'
+                : _dateController.text,
+            style: TextStyle(
+              color: _dateController.text.isEmpty
+                  ? Colors.grey[600]
+                  : Colors.black,
+            ),
+          ),
+          trailing: const Icon(Icons.arrow_drop_down, color: Color(0xFF3F51B5)),
+          onTap: _selectDate,
+        ),
       ),
     );
+  }
+
+  Future<void> _selectDate() async {
+    DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime.now().subtract(
+        const Duration(days: 365),
+      ), // Allow past dates
+      lastDate: DateTime.now().add(
+        const Duration(days: 365 * 2),
+      ), // Up to 2 years ahead
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Color(0xFF3F51B5),
+              onPrimary: Colors.white,
+              surface: Colors.white,
+              onSurface: Color(0xFF3F51B5),
+            ),
+            textButtonTheme: TextButtonThemeData(
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFF3F51B5),
+              ),
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null) {
+      setState(() {
+        _dateController.text = _formatDate(picked);
+      });
+    }
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.day.toString().padLeft(2, '0')}/'
+        '${date.month.toString().padLeft(2, '0')}/'
+        '${date.year}';
   }
 
   Widget _buildTimeField() {
@@ -2753,14 +2817,14 @@ class _ProfilePageState extends State<ProfilePage> {
             ],
           ),
         ),
-        SizedBox(
-          height: 280,
+        Container(
+          constraints: const BoxConstraints(maxHeight: 400),
           child: StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance
                 .collectionGroup('registrations')
                 .where('userId', isEqualTo: user.uid)
                 .orderBy('registeredAt', descending: true)
-                .limit(5)
+                .limit(10)
                 .snapshots(),
             builder: (context, snapshot) {
               if (snapshot.hasError) {
@@ -2786,17 +2850,31 @@ class _ProfilePageState extends State<ProfilePage> {
                           style: TextStyle(color: Colors.grey[600]),
                           textAlign: TextAlign.center,
                         ),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: () {
+                            // Refresh the stream by rebuilding
+                            setState(() {});
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF3F51B5),
+                            foregroundColor: Colors.white,
+                          ),
+                          child: const Text('Retry'),
+                        ),
                       ],
                     ),
                   ),
                 );
               }
+
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Padding(
                   padding: EdgeInsets.all(40),
                   child: Center(child: CircularProgressIndicator()),
                 );
               }
+
               final registrations = snapshot.data?.docs ?? [];
               if (registrations.isEmpty) {
                 return Padding(
@@ -2807,7 +2885,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       Icon(
                         Icons.event_busy,
                         size: 64,
-                        color: Color(0xFF9E9E9E),
+                        color: const Color(0xFF9E9E9E),
                       ),
                       const SizedBox(height: 16),
                       Text(
@@ -2815,7 +2893,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w600,
-                          color: Color(0xFF757575),
+                          color: const Color(0xFF757575),
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -2828,123 +2906,354 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 );
               }
-              return ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                itemCount: registrations.length,
-                itemBuilder: (context, i) {
-                  final regDoc = registrations[i];
-                  final eventId = regDoc.reference.parent.parent?.id ?? '';
-                  if (eventId.isEmpty) {
-                    return const ListTile(
-                      title: Text('Event ID unavailable'),
-                      subtitle: Text('Cannot locate event details'),
-                    );
-                  }
-                  return StreamBuilder<DocumentSnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection('events')
-                        .doc(eventId)
-                        .snapshots(),
-                    builder: (context, eventSnap) {
-                      if (eventSnap.hasError) {
-                        return const ListTile(
-                          leading: Icon(Icons.error_outline, color: Colors.red),
-                          title: Text('Error loading event'),
-                          subtitle: Text('Please try again later'),
-                        );
-                      }
-                      if (!eventSnap.hasData ||
-                          !(eventSnap.data?.exists ?? false)) {
-                        return const ListTile(
-                          leading: Icon(Icons.event_busy, color: Colors.grey),
-                          title: Text('Event unavailable'),
-                          subtitle: Text('This event may have been deleted'),
-                        );
-                      }
-                      final eventData =
-                          eventSnap.data?.data() as Map<String, dynamic>? ?? {};
-                      return Card(
-                        margin: EdgeInsets.only(bottom: 12),
-                        child: ListTile(
-                          dense: true,
-                          leading: Builder(
-                            builder: (context) {
-                              final localImagePath =
-                                  eventData['localImagePath'] as String?;
-                              final imageUrl = eventData['imageUrl'] as String?;
-                              return _buildEventImage(
-                                localImagePath,
-                                imageUrl,
-                                height: 50,
-                                width: 50,
+
+              return Column(
+                children: [
+                  Expanded(
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      itemCount: registrations.length,
+                      itemBuilder: (context, i) {
+                        final regDoc = registrations[i];
+                        final regData = regDoc.data() as Map<String, dynamic>;
+                        final eventId =
+                            regDoc.reference.parent.parent?.id ?? '';
+
+                        if (eventId.isEmpty) {
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            child: ListTile(
+                              leading: const Icon(
+                                Icons.warning_amber,
+                                color: Colors.orange,
+                              ),
+                              title: const Text('Event ID unavailable'),
+                              subtitle: const Text(
+                                'Cannot locate event details',
+                              ),
+                              tileColor: Colors.orange[50],
+                            ),
+                          );
+                        }
+
+                        return FutureBuilder<DocumentSnapshot>(
+                          future: FirebaseFirestore.instance
+                              .collection('events')
+                              .doc(eventId)
+                              .get(),
+                          builder: (context, eventSnap) {
+                            if (eventSnap.hasError) {
+                              return Card(
+                                margin: const EdgeInsets.only(bottom: 12),
+                                child: ListTile(
+                                  leading: const Icon(
+                                    Icons.error_outline,
+                                    color: Colors.red,
+                                  ),
+                                  title: const Text('Error loading event'),
+                                  subtitle: const Text(
+                                    'Please try again later',
+                                  ),
+                                  tileColor: Colors.red[50],
+                                ),
                               );
-                            },
-                          ),
-                          title: Text(
-                            eventData['title'] ?? 'Untitled Event',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (eventData['venue'] != null)
-                                Text(
-                                  eventData['venue'],
-                                  style: TextStyle(fontSize: 12),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+                            }
+
+                            if (!eventSnap.hasData ||
+                                !(eventSnap.data?.exists ?? false)) {
+                              return Card(
+                                margin: const EdgeInsets.only(bottom: 12),
+                                child: ListTile(
+                                  leading: const Icon(
+                                    Icons.event_busy,
+                                    color: Colors.grey,
+                                  ),
+                                  title: const Text('Event unavailable'),
+                                  subtitle: const Text(
+                                    'This event may have been deleted',
+                                  ),
+                                  tileColor: Colors.grey[100],
                                 ),
-                              if (eventData['eventDate'] != null)
-                                Text(
-                                  eventData['eventDate'] != null
-                                      ? DateTime.fromMillisecondsSinceEpoch(
-                                          eventData['eventDate'] as int,
-                                        ).toLocal().toString().split(' ')[0]
-                                      : DateTime.now()
-                                            .toLocal()
-                                            .toString()
-                                            .split(' ')[0],
-                                  style: TextStyle(fontSize: 12),
+                              );
+                            }
+
+                            final eventData =
+                                eventSnap.data!.data()
+                                    as Map<String, dynamic>? ??
+                                {};
+                            return Card(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              elevation: 3,
+                              child: InkWell(
+                                onTap: () {
+                                  // Navigate to event details
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (context) => EventDetailsPage(
+                                        eventId: eventId,
+                                        eventData: eventData,
+                                      ),
+                                    ),
+                                  );
+                                },
+                                borderRadius: BorderRadius.circular(12),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Container(
+                                            width: 60,
+                                            height: 60,
+                                            child: _buildEventImage(
+                                              eventData['localImagePath']
+                                                  as String?,
+                                              eventData['imageUrl'] as String?,
+                                              height: 60,
+                                              width: 60,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  eventData['title'] ??
+                                                      'Untitled Event',
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 16,
+                                                  ),
+                                                  maxLines: 2,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                                if (eventData['venue'] != null)
+                                                  Text(
+                                                    eventData['venue'],
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      color: Colors.grey[600],
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                  ),
+                                                if (eventData['eventDate'] !=
+                                                    null)
+                                                  Text(
+                                                    _formatEventDate(
+                                                      eventData['eventDate'],
+                                                    ),
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      color: Colors.grey[600],
+                                                    ),
+                                                  ),
+                                                Row(
+                                                  children: [
+                                                    if (eventData['isPaid'] ==
+                                                        true)
+                                                      Container(
+                                                        padding:
+                                                            const EdgeInsets.symmetric(
+                                                              horizontal: 6,
+                                                              vertical: 2,
+                                                            ),
+                                                        decoration: BoxDecoration(
+                                                          color: Colors.green,
+                                                          borderRadius:
+                                                              BorderRadius.circular(
+                                                                10,
+                                                              ),
+                                                        ),
+                                                        child: Text(
+                                                          '₹${eventData['price'] ?? 0}',
+                                                          style:
+                                                              const TextStyle(
+                                                                color: Colors
+                                                                    .white,
+                                                                fontSize: 10,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .bold,
+                                                              ),
+                                                        ),
+                                                      )
+                                                    else
+                                                      Container(
+                                                        padding:
+                                                            const EdgeInsets.symmetric(
+                                                              horizontal: 6,
+                                                              vertical: 2,
+                                                            ),
+                                                        decoration: BoxDecoration(
+                                                          color: Colors.blue,
+                                                          borderRadius:
+                                                              BorderRadius.circular(
+                                                                10,
+                                                              ),
+                                                        ),
+                                                        child: const Text(
+                                                          'FREE',
+                                                          style: TextStyle(
+                                                            color: Colors.white,
+                                                            fontSize: 10,
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    const SizedBox(width: 8),
+                                                    const Icon(
+                                                      Icons.qr_code,
+                                                      size: 16,
+                                                      color: Color(0xFF3F51B5),
+                                                    ),
+                                                    const Text(
+                                                      'QR Available',
+                                                      style: TextStyle(
+                                                        fontSize: 10,
+                                                        color: Color(
+                                                          0xFF3F51B5,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text(
+                                            'Registered: ${_formatRegistrationDate(regData['registeredAt'])}',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              color: Colors.grey[500],
+                                            ),
+                                          ),
+                                          Row(
+                                            children: [
+                                              ElevatedButton(
+                                                onPressed: () {
+                                                  Navigator.of(context).push(
+                                                    MaterialPageRoute(
+                                                      builder: (context) =>
+                                                          const QRCodeDisplayPage(),
+                                                    ),
+                                                  );
+                                                },
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: const Color(
+                                                    0xFF3F51B5,
+                                                  ),
+                                                  foregroundColor: Colors.white,
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 12,
+                                                        vertical: 6,
+                                                      ),
+                                                  minimumSize: const Size(
+                                                    0,
+                                                    30,
+                                                  ),
+                                                ),
+                                                child: const Text(
+                                                  'View QR',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                  ),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              ElevatedButton(
+                                                onPressed: () {
+                                                  Navigator.of(context).push(
+                                                    MaterialPageRoute(
+                                                      builder: (context) =>
+                                                          EventDetailsPage(
+                                                            eventId: eventId,
+                                                            eventData:
+                                                                eventData,
+                                                          ),
+                                                    ),
+                                                  );
+                                                },
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: Colors.white,
+                                                  foregroundColor: const Color(
+                                                    0xFF3F51B5,
+                                                  ),
+                                                  side: const BorderSide(
+                                                    color: Color(0xFF3F51B5),
+                                                  ),
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 12,
+                                                        vertical: 6,
+                                                      ),
+                                                  minimumSize: const Size(
+                                                    0,
+                                                    30,
+                                                  ),
+                                                ),
+                                                child: const Text(
+                                                  'Details',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              Text(
-                                eventData['eventTime'] ?? 'Time TBD',
-                                style: TextStyle(fontSize: 12),
                               ),
-                              Text(
-                                eventData['isPaid'] == true
-                                    ? '₹${eventData['price'] ?? 0}'
-                                    : 'Free',
-                                style: TextStyle(
-                                  color: Color(0xFF4CAF50),
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 12,
-                                ),
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                  if (registrations.length >= 10)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 10,
+                      ),
+                      child: Center(
+                        child: TextButton(
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) => const QRCodeDisplayPage(),
                               ),
-                            ],
-                          ),
-                          trailing: Icon(
-                            Icons.check_circle,
-                            color: Colors.green,
-                            size: 24,
-                          ),
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (context) => EventDetailsPage(
-                                eventId: eventId,
-                                eventData: eventData,
-                              ),
-                            ),
+                            );
+                          },
+                          child: const Text(
+                            'View All Events',
+                            style: TextStyle(color: Color(0xFF3F51B5)),
                           ),
                         ),
-                      );
-                    },
-                  );
-                },
+                      ),
+                    ),
+                ],
               );
             },
           ),
@@ -2953,323 +3262,215 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: appData,
-      builder: (context, _) {
-        final hasImage =
-            appData.profileImageUrl != null &&
-            appData.profileImageUrl!.isNotEmpty;
-        return ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            // Profile Header Card
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.only(top: 40, bottom: 30),
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Color(0xFF1A237E),
-                    Color(0xFF3F51B5),
-                    Color(0xFF03A9F4),
-                  ],
-                ),
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(30),
-                  bottomRight: Radius.circular(30),
-                ),
-              ),
-              child: Column(
-                children: [
-                  // Profile picture
-                  GestureDetector(
-                    onTap: _isLoading ? null : _pickImage,
-                    child: Stack(
-                      children: [
-                        Container(
-                          width: 100,
-                          height: 100,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 3),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.3),
-                                blurRadius: 12,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                            image: hasImage
-                                ? DecorationImage(
-                                    image: NetworkImage(
-                                      appData.profileImageUrl!,
-                                    ),
-                                    fit: BoxFit.cover,
-                                  )
-                                : null,
-                            color: hasImage ? null : Colors.white,
-                          ),
-                          child: hasImage
-                              ? null
-                              : Center(
-                                  child: Text(
-                                    (appData.userName != null &&
-                                            appData.userName!.isNotEmpty)
-                                        ? appData.userName![0].toUpperCase()
-                                        : '?',
-                                    style: const TextStyle(
-                                      fontSize: 40,
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xFF3F51B5),
-                                    ),
-                                  ),
-                                ),
-                        ),
-                        if (_isLoading)
-                          Container(
-                            width: 100,
-                            height: 100,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Colors.black.withValues(alpha: 0.5),
-                            ),
-                            child: const Center(
-                              child: CircularProgressIndicator(
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        Positioned(
-                          bottom: 0,
-                          right: 0,
-                          child: Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: const BoxDecoration(
-                              color: Colors.greenAccent,
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.camera_alt,
-                              color: Colors.white,
-                              size: 16,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  Text(
-                    appData.userName ?? 'Loading...',
-                    style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    appData.userEmail ?? '',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.white.withValues(alpha: 0.75),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
+  // Helper function to format event date
+  String _formatEventDate(dynamic eventDate) {
+    if (eventDate is int) {
+      final date = DateTime.fromMillisecondsSinceEpoch(eventDate);
+      return '${date.day}/${date.month}/${date.year}';
+    }
+    return 'Date TBD';
+  }
 
-            // Edit Form Section
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Edit Details',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blueGrey,
-                    ),
-                  ),
-                  const SizedBox(height: 15),
-                  _buildEditField(
-                    Icons.business_rounded,
-                    'Department',
-                    _deptController,
-                  ),
-                  const SizedBox(height: 15),
-                  _buildEditField(
-                    Icons.school_rounded,
-                    'Course',
-                    _courseController,
-                  ),
-                  const SizedBox(height: 15),
-                  _buildEditField(
-                    Icons.groups_rounded,
-                    'Division',
-                    _divController,
-                  ),
-                  const SizedBox(height: 25),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: _isLoading ? null : _saveProfile,
-                      icon: const Icon(Icons.save),
-                      label: const Text(
-                        'Save Profile',
-                        style: TextStyle(fontSize: 16),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF3F51B5),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 15),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () {
-                        showDialog(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            title: const Text('Help & Support'),
-                            content: const Text(
-                              'For any queries or support, please contact us at support@campussync.com',
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(context),
-                                child: const Text('Close'),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                      icon: const Icon(
-                        Icons.help_outline_rounded,
-                        color: Color(0xFF3F51B5),
-                        size: 20,
-                      ),
-                      label: const Text(
-                        'Help & Support',
-                        style: TextStyle(
-                          color: Color(0xFF3F51B5),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(
-                          color: Color(0xFF3F51B5),
-                          width: 1.5,
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                    ),
-                  ),
-                  _buildRegisteredEventsSection(),
-                  const SizedBox(height: 15),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (context) => const QRCodeDisplayPage(),
-                          ),
-                        );
-                      },
-                      icon: const Icon(Icons.qr_code_scanner),
-                      label: const Text('View My QR Codes'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF3F51B5),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () async {
-                        await FirebaseAuth.instance.signOut();
-                      },
-                      icon: const Icon(
-                        Icons.logout_rounded,
-                        color: Colors.red,
-                        size: 20,
-                      ),
-                      label: const Text(
-                        'Logout',
-                        style: TextStyle(
-                          color: Colors.red,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: Colors.red, width: 1.5),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 30),
-                ],
-              ),
+  // Helper function to format registration date
+  String _formatRegistrationDate(dynamic registeredAt) {
+    if (registeredAt is Timestamp) {
+      return registeredAt.toDate().toLocal().toString().split(' ')[0];
+    }
+    return 'Recently';
+  }
+
+  Widget _buildProfileSection() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF3F51B5).withOpacity(0.1),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 80,
+            height: 80,
+            decoration: BoxDecoration(
+              color: const Color(0xFF3F51B5),
+              shape: BoxShape.circle,
             ),
-          ],
-        );
-      },
+            child: const Icon(Icons.person, size: 40, color: Colors.white),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  appData.userName ?? 'User',
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF3F51B5),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  user.email ?? '',
+                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildEditField(
-    IconData icon,
-    String label,
-    TextEditingController controller,
-  ) {
+  Widget _buildProfileForm() {
     return Container(
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFFF5F5F5),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: TextField(
-        controller: controller,
-        decoration: InputDecoration(
-          labelText: label,
-          prefixIcon: Icon(icon, color: const Color(0xFF3F51B5)),
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 20,
-            vertical: 16,
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
           ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Edit Profile',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF3F51B5),
+            ),
+          ),
+          const SizedBox(height: 20),
+          TextFormField(
+            controller: _deptController,
+            decoration: const InputDecoration(
+              labelText: 'Department',
+              prefixIcon: Icon(Icons.business),
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 15),
+          TextFormField(
+            controller: _courseController,
+            decoration: const InputDecoration(
+              labelText: 'Course',
+              prefixIcon: Icon(Icons.school),
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 15),
+          TextFormField(
+            controller: _divController,
+            decoration: const InputDecoration(
+              labelText: 'Division',
+              prefixIcon: Icon(Icons.group),
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _isLoading ? null : _saveProfile,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF3F51B5),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: _isLoading
+                  ? const CircularProgressIndicator(color: Colors.white)
+                  : const Text('Save Profile'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Profile'),
+        backgroundColor: const Color(0xFF3F51B5),
+        foregroundColor: Colors.white,
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildProfileSection(),
+            const SizedBox(height: 30),
+            _buildProfileForm(),
+            const SizedBox(height: 15),
+            _buildRegisteredEventsSection(),
+            const SizedBox(height: 15),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const QRCodeDisplayPage(),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.qr_code_scanner),
+                label: const Text('View My QR Codes'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF3F51B5),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () async {
+                  await FirebaseAuth.instance.signOut();
+                },
+                icon: const Icon(
+                  Icons.logout_rounded,
+                  color: Colors.red,
+                  size: 20,
+                ),
+                label: const Text(
+                  'Logout',
+                  style: TextStyle(
+                    color: Colors.red,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-// Dummy Payment Page
+// Payment Page
 class PaymentPage extends StatefulWidget {
   final String eventId;
   final String eventTitle;
@@ -3287,38 +3488,13 @@ class PaymentPage extends StatefulWidget {
 }
 
 class _PaymentPageState extends State<PaymentPage> {
-  final _cardNumberController = TextEditingController();
-  final _cardHolderController = TextEditingController();
-  final _expiryController = TextEditingController();
-  final _cvvController = TextEditingController();
   bool _isProcessing = false;
 
-  @override
-  void dispose() {
-    _cardNumberController.dispose();
-    _cardHolderController.dispose();
-    _expiryController.dispose();
-    _cvvController.dispose();
-    super.dispose();
-  }
-
   Future<void> _processPayment() async {
-    if (_cardNumberController.text.length < 16 ||
-        _cardHolderController.text.isEmpty ||
-        _expiryController.text.isEmpty ||
-        _cvvController.text.length < 3) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please fill all payment details correctly'),
-        ),
-      );
-      return;
-    }
-
     setState(() => _isProcessing = true);
 
     // Simulate payment processing
-    await Future.delayed(const Duration(seconds: 3));
+    await Future.delayed(const Duration(seconds: 2));
 
     // Register for the event after successful payment
     try {
@@ -3343,7 +3519,7 @@ class _PaymentPageState extends State<PaymentPage> {
               'userEmail': user.email,
               'registeredAt': FieldValue.serverTimestamp(),
               'paymentAmount': widget.amount,
-              'paymentMethod': 'Card',
+              'paymentMethod': 'Simulated',
               'paidAt': FieldValue.serverTimestamp(),
               'qrCode': _generateUniqueQRCode(widget.eventId, user.uid),
               'qrPath': qrPath,
@@ -3351,7 +3527,6 @@ class _PaymentPageState extends State<PaymentPage> {
       }
     } catch (e) {
       debugPrint('Error registering after payment: $e');
-      // Continue to success page even if registration fails
     }
 
     if (mounted) {
@@ -3360,6 +3535,7 @@ class _PaymentPageState extends State<PaymentPage> {
           builder: (context) => PaymentSuccessPage(
             eventTitle: widget.eventTitle,
             amount: widget.amount,
+            eventId: widget.eventId,
           ),
         ),
       );
@@ -3374,68 +3550,42 @@ class _PaymentPageState extends State<PaymentPage> {
         backgroundColor: const Color(0xFF3F51B5),
         foregroundColor: Colors.white,
       ),
-      body: SingleChildScrollView(
+      body: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(
-              'Event: ${widget.eventTitle}',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Amount: ₹${widget.amount.toStringAsFixed(2)}',
-              style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF4CAF50),
+            Container(
+              padding: const EdgeInsets.all(30),
+              decoration: BoxDecoration(
+                color: const Color(0xFF3F51B5).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Column(
+                children: [
+                  const Icon(Icons.payment, size: 80, color: Color(0xFF3F51B5)),
+                  const SizedBox(height: 20),
+                  Text(
+                    widget.eventTitle,
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF3F51B5),
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Amount: ₹${widget.amount.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      fontSize: 20,
+                      color: Color(0xFF3F51B5),
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 30),
-            const Text(
-              'Payment Details',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 20),
-            _buildPaymentField(
-              controller: _cardNumberController,
-              label: 'Card Number',
-              icon: Icons.credit_card,
-              keyboardType: TextInputType.number,
-              maxLength: 16,
-            ),
-            const SizedBox(height: 15),
-            _buildPaymentField(
-              controller: _cardHolderController,
-              label: 'Card Holder Name',
-              icon: Icons.person,
-            ),
-            const SizedBox(height: 15),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildPaymentField(
-                    controller: _expiryController,
-                    label: 'MM/YY',
-                    icon: Icons.calendar_today,
-                    maxLength: 5,
-                  ),
-                ),
-                const SizedBox(width: 15),
-                Expanded(
-                  child: _buildPaymentField(
-                    controller: _cvvController,
-                    label: 'CVV',
-                    icon: Icons.lock,
-                    keyboardType: TextInputType.number,
-                    maxLength: 3,
-                    obscureText: true,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 30),
+            const SizedBox(height: 40),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
@@ -3445,72 +3595,18 @@ class _PaymentPageState extends State<PaymentPage> {
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(12),
                   ),
                 ),
                 child: _isProcessing
-                    ? const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                Colors.white,
-                              ),
-                            ),
-                          ),
-                          SizedBox(width: 10),
-                          Text('Processing...'),
-                        ],
-                      )
-                    : Text(
-                        'Pay ₹${widget.amount.toStringAsFixed(2)}',
-                        style: const TextStyle(fontSize: 16),
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text(
+                        'Simulate Payment',
+                        style: TextStyle(fontSize: 18),
                       ),
               ),
             ),
-            const SizedBox(height: 20),
-            const Text(
-              'Note: This is a dummy payment gateway for demonstration purposes only.',
-              style: TextStyle(color: Colors.grey, fontSize: 12),
-              textAlign: TextAlign.center,
-            ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPaymentField({
-    required TextEditingController controller,
-    required String label,
-    required IconData icon,
-    TextInputType? keyboardType,
-    int? maxLength,
-    bool obscureText = false,
-  }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFFF5F5F5),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.grey.shade300),
-      ),
-      child: TextField(
-        controller: controller,
-        keyboardType: keyboardType,
-        maxLength: maxLength,
-        obscureText: obscureText,
-        decoration: InputDecoration(
-          labelText: label,
-          prefixIcon: Icon(icon, color: const Color(0xFF3F51B5)),
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 20,
-            vertical: 16,
-          ),
         ),
       ),
     );
@@ -3521,146 +3617,277 @@ class _PaymentPageState extends State<PaymentPage> {
 class PaymentSuccessPage extends StatefulWidget {
   final String eventTitle;
   final double amount;
+  final String eventId;
 
   const PaymentSuccessPage({
     super.key,
     required this.eventTitle,
     required this.amount,
+    required this.eventId,
   });
 
   @override
   State<PaymentSuccessPage> createState() => _PaymentSuccessPageState();
 }
 
-class _PaymentSuccessPageState extends State<PaymentSuccessPage> {
+class _PaymentSuccessPageState extends State<PaymentSuccessPage>
+    with TickerProviderStateMixin {
   int _countdown = 7;
-  Timer? _timer;
+  String? _qrPath;
+  String? _qrCode;
+  late AnimationController _animationController;
+  late Animation<double> _scaleAnimation;
 
   @override
   void initState() {
     super.initState();
+    _loadQRCode();
     _startCountdown();
+
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    );
+
+    _scaleAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.elasticOut),
+    );
+
+    _animationController.forward();
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadQRCode() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      final regSnapshot = await FirebaseFirestore.instance
+          .collection('events')
+          .doc(widget.eventId)
+          .collection('registrations')
+          .doc(user.uid)
+          .get();
+
+      if (regSnapshot.exists) {
+        final regData = regSnapshot.data() as Map<String, dynamic>;
+        setState(() {
+          _qrPath = regData['qrPath'] as String?;
+          _qrCode = regData['qrCode'] as String?;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading QR code: $e');
+    }
   }
 
   void _startCountdown() {
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_countdown > 0) {
-        setState(() {
-          _countdown--;
-        });
-      } else {
-        timer.cancel();
+    Future.delayed(const Duration(seconds: 1), () {
+      if (mounted && _countdown > 0) {
+        setState(() => _countdown--);
+        _startCountdown();
+      } else if (mounted) {
         _redirectToHome();
       }
     });
   }
 
   void _redirectToHome() {
-    if (mounted) {
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (context) => const HomePage()),
-        (route) => false,
-      );
-    }
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (context) => const HomePage()),
+      (route) => false,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF4CAF50),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 100,
-              height: 100,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
-                    blurRadius: 10,
-                    offset: const Offset(0, 5),
+      body: SafeArea(
+        child: ScaleTransition(
+          scale: _scaleAnimation,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(30),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.2),
+                        blurRadius: 15,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-              child: const Icon(
-                Icons.check,
-                size: 60,
-                color: Color(0xFF4CAF50),
-              ),
-            ),
-            const SizedBox(height: 30),
-            const Text(
-              'Payment Successful!',
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 15),
-            Text(
-              'Registration for ${widget.eventTitle}',
-              style: const TextStyle(fontSize: 18, color: Colors.white),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Amount: ₹${widget.amount.toStringAsFixed(2)}',
-              style: const TextStyle(fontSize: 16, color: Colors.white70),
-            ),
-            const SizedBox(height: 40),
-            Container(
-              padding: const EdgeInsets.all(20),
-              margin: const EdgeInsets.symmetric(horizontal: 40),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(15),
-              ),
-              child: Column(
-                children: [
-                  const Text(
-                    'You will be redirected to home in',
-                    style: TextStyle(fontSize: 16, color: Colors.white),
+                  child: const Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.check_circle,
+                        size: 80,
+                        color: Color(0xFF4CAF50),
+                      ),
+                      SizedBox(height: 20),
+                      Text(
+                        'Payment Successful!',
+                        style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF4CAF50),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 10),
-                  Text(
-                    '$_countdown seconds',
-                    style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  'Registration for ${widget.eventTitle}',
+                  style: const TextStyle(fontSize: 18, color: Colors.white),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Amount: ₹${widget.amount.toStringAsFixed(2)}',
+                  style: const TextStyle(fontSize: 16, color: Colors.white70),
+                ),
+                const SizedBox(height: 20),
+                if (_qrPath != null)
+                  Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 20),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
                       color: Colors.white,
+                      borderRadius: BorderRadius.circular(15),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 10,
+                          offset: const Offset(0, 5),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          'Your Event QR Code',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF3F51B5),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Image.file(File(_qrPath!), width: 150, height: 150),
+                        const SizedBox(height: 12),
+                        if (_qrCode != null)
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF3F51B5).withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              'Code: $_qrCode',
+                              style: const TextStyle(
+                                fontFamily: 'monospace',
+                                fontSize: 10,
+                                color: Color(0xFF3F51B5),
+                              ),
+                            ),
+                          ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Save this QR code for event entry',
+                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                      ],
                     ),
                   ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 30),
-            ElevatedButton(
-              onPressed: _redirectToHome,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: const Color(0xFF4CAF50),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 30,
-                  vertical: 12,
+                const SizedBox(height: 20),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  margin: const EdgeInsets.symmetric(horizontal: 40),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'You will be redirected to home in',
+                        style: TextStyle(fontSize: 14, color: Colors.white),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '$_countdown seconds',
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(25),
+                const SizedBox(height: 20),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 40),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: _redirectToHome,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: const Color(0xFF4CAF50),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(25),
+                            ),
+                          ),
+                          child: const Text('Go to Home Now'),
+                        ),
+                      ),
+                      if (_qrPath != null) ...[
+                        const SizedBox(width: 10),
+                        ElevatedButton(
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) => const QRCodeDisplayPage(),
+                              ),
+                            );
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: const Color(0xFF3F51B5),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(25),
+                            ),
+                          ),
+                          child: const Text('View QR Codes'),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
-              ),
-              child: const Text('Go to Home Now'),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -3856,6 +4083,20 @@ class _QRCodeDisplayPageState extends State<QRCodeDisplayPage> {
           );
         },
       ),
+    );
+  }
+}
+
+class CampusSyncApp extends StatelessWidget {
+  const CampusSyncApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'CampusSync',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(primarySwatch: Colors.indigo, useMaterial3: true),
+      home: const AuthWrapper(),
     );
   }
 }
