@@ -2199,8 +2199,40 @@ class _MainNavigationHolderState extends State<MainNavigationHolder> {
   }
 }
 
-class HomePage extends StatelessWidget {
+class HomePage extends StatefulWidget {
   const HomePage({super.key});
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  Future<bool> _isUserRegistered(String eventId) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return false;
+
+    try {
+      final regDoc = await FirebaseFirestore.instance
+          .collection('events')
+          .doc(eventId)
+          .collection('registrations')
+          .doc(user.uid)
+          .get();
+      return regDoc.exists;
+    } catch (e) {
+      debugPrint('Error checking registration: $e');
+      return false;
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Force a rebuild when dependencies change (like navigation)
+    if (mounted) {
+      setState(() {});
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2233,11 +2265,73 @@ class HomePage extends StatelessWidget {
           child: StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance.collection('events').snapshots(),
             builder: (context, snapshot) {
-              if (!snapshot.hasData)
+              if (snapshot.hasError) {
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.error_outline,
+                        size: 48,
+                        color: Colors.red[400],
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Error loading events',
+                        style: TextStyle(color: Colors.red[400]),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Please check your connection and try again',
+                        style: TextStyle(color: Colors.grey[600]),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: () {
+                          setState(() {});
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF3F51B5),
+                          foregroundColor: Colors.white,
+                        ),
+                        child: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
+              }
+
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                return const Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.event_available, size: 64, color: Colors.grey),
+                      SizedBox(height: 16),
+                      Text(
+                        'No events published yet',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey,
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        'Check back later for upcoming events',
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                );
+              }
+
               final events = snapshot.data!.docs;
-              if (events.isEmpty)
-                return const Center(child: Text('No events published yet.'));
 
               return ListView.builder(
                 padding: const EdgeInsets.symmetric(
@@ -2344,29 +2438,56 @@ class HomePage extends StatelessWidget {
                                         ],
                                       ),
                                     ),
-                                    ElevatedButton(
-                                      onPressed: () => Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (context) =>
-                                              EventDetailsPage(
-                                                eventId: eventId,
-                                                eventData: data,
-                                              ),
-                                        ),
-                                      ),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: const Color(
-                                          0xFF3F51B5,
-                                        ),
-                                        foregroundColor: Colors.white,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            10,
+                                    FutureBuilder<bool>(
+                                      future: _isUserRegistered(eventId),
+                                      builder: (context, snapshot) {
+                                        final isRegistered =
+                                            snapshot.data ?? false;
+
+                                        return ElevatedButton(
+                                          onPressed: () => Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (context) =>
+                                                  EventDetailsPage(
+                                                    eventId: eventId,
+                                                    eventData: data,
+                                                  ),
+                                            ),
                                           ),
-                                        ),
-                                      ),
-                                      child: const Text('RSVP Now'),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: isRegistered
+                                                ? Colors.green
+                                                : const Color(0xFF3F51B5),
+                                            foregroundColor: Colors.white,
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                            ),
+                                          ),
+                                          child: Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            children: [
+                                              if (isRegistered) ...[
+                                                const Icon(
+                                                  Icons.check_circle,
+                                                  size: 16,
+                                                ),
+                                                const SizedBox(width: 6),
+                                                const Text('Registered'),
+                                              ] else ...[
+                                                const Icon(
+                                                  Icons.event_available,
+                                                  size: 16,
+                                                ),
+                                                const SizedBox(width: 6),
+                                                const Text('RSVP Now'),
+                                              ],
+                                            ],
+                                          ),
+                                        );
+                                      },
                                     ),
                                   ],
                                 ),
@@ -2443,6 +2564,106 @@ class EventDetailsPage extends StatefulWidget {
 
 class _EventDetailsPageState extends State<EventDetailsPage> {
   bool _isRegistering = false;
+  bool _isAlreadyRegistered = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkRegistrationStatus();
+  }
+
+  Future<void> _checkRegistrationStatus() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      final regDoc = await FirebaseFirestore.instance
+          .collection('events')
+          .doc(widget.eventId)
+          .collection('registrations')
+          .doc(user.uid)
+          .get();
+
+      if (mounted) {
+        setState(() {
+          _isAlreadyRegistered = regDoc.exists;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error checking registration status: $e');
+    }
+  }
+
+  Future<void> _unregisterFromEvent() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    setState(() => _isRegistering = true);
+    try {
+      // Delete the registration document
+      await FirebaseFirestore.instance
+          .collection('events')
+          .doc(widget.eventId)
+          .collection('registrations')
+          .doc(user.uid)
+          .delete();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Successfully unregistered from event'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        // Update registration status
+        setState(() {
+          _isAlreadyRegistered = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error unregistering: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _isRegistering = false);
+    }
+  }
+
+  Future<void> _viewQRCode() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      final regDoc = await FirebaseFirestore.instance
+          .collection('events')
+          .doc(widget.eventId)
+          .collection('registrations')
+          .doc(user.uid)
+          .get();
+
+      if (regDoc.exists && regDoc.data()?['qrPath'] != null) {
+        if (mounted) {
+          Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (context) => QRCodeDisplayPage()));
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('QR code not found')));
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error viewing QR code: $e')));
+      }
+    }
+  }
 
   Future<void> _registerForEvent() async {
     final user = FirebaseAuth.instance.currentUser;
@@ -2639,32 +2860,158 @@ class _EventDetailsPageState extends State<EventDetailsPage> {
                     ),
                   ),
                   const SizedBox(height: 40),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 60,
-                    child: ElevatedButton(
-                      onPressed: _isRegistering ? null : _registerForEvent,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF3F51B5),
-                        foregroundColor: Colors.white,
-                        elevation: 8,
-                        shadowColor: const Color(0xFF3F51B5).withOpacity(0.4),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
+                  if (_isAlreadyRegistered)
+                    Column(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Colors.green.withOpacity(0.3),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.check_circle,
+                                color: Colors.green,
+                                size: 24,
+                              ),
+                              const SizedBox(width: 12),
+                              const Text(
+                                'You are registered for this event',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.green,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      child: _isRegistering
-                          ? const CircularProgressIndicator(color: Colors.white)
-                          : const Text(
-                              'Register Now',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 1.2,
+                        const SizedBox(height: 20),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton(
+                                onPressed: _isRegistering ? null : _viewQRCode,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF3F51B5),
+                                  foregroundColor: Colors.white,
+                                  elevation: 8,
+                                  shadowColor: const Color(
+                                    0xFF3F51B5,
+                                  ).withOpacity(0.4),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(18),
+                                  ),
+                                ),
+                                child: _isRegistering
+                                    ? const SizedBox(
+                                        height: 20,
+                                        width: 20,
+                                        child: CircularProgressIndicator(
+                                          color: Colors.white,
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Icon(Icons.qr_code, size: 20),
+                                          SizedBox(width: 8),
+                                          Text(
+                                            'View Your QR',
+                                            style: TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                               ),
                             ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: ElevatedButton(
+                                onPressed: _isRegistering
+                                    ? null
+                                    : _unregisterFromEvent,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.white,
+                                  foregroundColor: Colors.red,
+                                  elevation: 8,
+                                  shadowColor: Colors.red.withOpacity(0.4),
+                                  side: const BorderSide(
+                                    color: Colors.red,
+                                    width: 2,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(18),
+                                  ),
+                                ),
+                                child: _isRegistering
+                                    ? const SizedBox(
+                                        height: 20,
+                                        width: 20,
+                                        child: CircularProgressIndicator(
+                                          color: Colors.red,
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Icon(Icons.cancel, size: 20),
+                                          SizedBox(width: 8),
+                                          Text(
+                                            'Unregister',
+                                            style: TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    )
+                  else
+                    SizedBox(
+                      width: double.infinity,
+                      height: 60,
+                      child: ElevatedButton(
+                        onPressed: _isRegistering ? null : _registerForEvent,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF3F51B5),
+                          foregroundColor: Colors.white,
+                          elevation: 8,
+                          shadowColor: const Color(0xFF3F51B5).withOpacity(0.4),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                        ),
+                        child: _isRegistering
+                            ? const CircularProgressIndicator(
+                                color: Colors.white,
+                              )
+                            : const Text(
+                                'Register Now',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 1.2,
+                                ),
+                              ),
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),
@@ -3699,7 +4046,7 @@ class _PaymentSuccessPageState extends State<PaymentSuccessPage>
 
   void _redirectToHome() {
     Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (context) => const HomePage()),
+      MaterialPageRoute(builder: (context) => const MainNavigationHolder()),
       (route) => false,
     );
   }
